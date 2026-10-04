@@ -1,0 +1,63 @@
+schema = 1
+name = "bismuth"
+simulation_scale = "mesoscopic_surface"
+node_budget = "fixed"
+atomic_net = false
+
+[crystallography]
+crystal_system = "trigonal-rhombohedral"
+structure = "A7"
+point_group = "-3m"
+space_group = "R-3m"
+space_group_number = 166
+a_angstrom_hexagonal = 4.55
+c_angstrom_hexagonal = 11.85
+
+[orientation]
+principal_axis = "trigonal_c"
+
+[growth]
+model = "kinetic_faceting"
+baseline_speed = 1.0
+# Candidate face competition for a first visual prototype.
+# Speeds are gameplay seeds, not measured bismuth growth rates.
+
+[[growth.facet]]
+family = "{003}"
+label = "basal-family candidate"
+relative_speed = 0.34
+capture_width_degrees = 9.0
+
+[[growth.facet]]
+family = "{012}"
+label = "rhombohedral-family candidate"
+relative_speed = 0.42
+capture_width_degrees = 9.0
+
+[[growth.facet]]
+family = "{101}"
+label = "inclined-family candidate"
+relative_speed = 0.55
+capture_width_degrees = 8.0
+
+[net]
+# Coarse A7-inspired local rule: 3 nearer and 3 farther directional preferences.
+near_direction_count = 3
+far_direction_count = 3
+near_link_stiffness = 0.90
+far_link_stiffness = 0.48
+edge_redistribution = 0.45
+
+[hopper_rule]
+# Synthetic bismuth's familiar stair-step/hopper habit is a kinetic growth mode,
+# separate from the statement that bulk Bi has the A7 lattice.
+enabled_by_default = true
+edge_speed_multiplier = 1.45
+face_center_speed_multiplier = 0.58
+corner_speed_multiplier = 1.20
+ledge_memory_steps = 48
+terrace_target_spacing = 0.08
+
+[sources]
+phase_reference = "https://www.metallurgy.nist.gov/phase/solder/agbi.html"
+morphology = "https://www.mindat.org/min-684.html"
