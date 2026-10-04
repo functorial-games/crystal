@@ -1,0 +1,54 @@
+schema = 1
+name = "halite"
+simulation_scale = "mesoscopic_surface"
+node_budget = "fixed"
+atomic_net = false
+
+[crystallography]
+crystal_system = "isometric"
+point_group = "m-3m"
+space_group = "Fm-3m"
+a_angstrom = 5.6404
+
+[orientation]
+principal_axes = ["x", "y", "z"]
+
+[growth]
+model = "kinetic_faceting"
+baseline_speed = 1.0
+# Gameplay seeds, not measured growth rates.
+
+[[growth.facet]]
+family = "{100}"
+label = "cube"
+relative_speed = 0.24
+capture_width_degrees = 9.0
+
+[[growth.facet]]
+family = "{111}"
+label = "octahedron"
+relative_speed = 0.66
+capture_width_degrees = 8.0
+
+[[growth.facet]]
+family = "{110}"
+label = "dodecahedral competitor"
+relative_speed = 0.92
+capture_width_degrees = 7.0
+
+[net]
+# Six signed axis directions: ±x, ±y, ±z.
+direction_classes = ["x", "y", "z"]
+orthogonality_stiffness = 0.90
+link_stiffness = 0.85
+edge_redistribution = 0.30
+
+[hopper_rule]
+# Optional kinetic mode: preserve ledges while face centers lag.
+enabled_by_default = false
+edge_speed_multiplier = 1.25
+face_center_speed_multiplier = 0.70
+ledge_memory_steps = 24
+
+[sources]
+crystallography = "https://www.mindat.org/min-1804.html"
