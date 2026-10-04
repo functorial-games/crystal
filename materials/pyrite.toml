@@ -1,0 +1,52 @@
+schema = 1
+name = "pyrite"
+simulation_scale = "mesoscopic_surface"
+node_budget = "fixed"
+atomic_net = false
+
+[crystallography]
+crystal_system = "isometric"
+point_group = "m-3"
+space_group = "Pa-3"
+space_group_number = 205
+a_angstrom = 5.417
+
+[growth]
+model = "kinetic_faceting"
+baseline_speed = 1.0
+# Gameplay seeds, not measured growth rates.
+
+[[growth.facet]]
+family = "{100}"
+label = "cube"
+relative_speed = 0.29
+capture_width_degrees = 8.0
+
+[[growth.facet]]
+family = "{210}"
+label = "pyritohedron"
+relative_speed = 0.33
+capture_width_degrees = 8.0
+
+[[growth.facet]]
+family = "{111}"
+label = "octahedron"
+relative_speed = 0.47
+capture_width_degrees = 8.0
+
+[net]
+# Start from cubic axes but do not promote the law to halite's full m-3m symmetry.
+direction_classes = ["x", "y", "z", "pyritohedral_offset"]
+link_stiffness = 0.82
+angle_stiffness = 0.72
+edge_redistribution = 0.38
+
+[striation_rule]
+enabled_by_default = false
+family = "{100}"
+period = 0.06
+strength = 0.08
+alternate_adjacent_faces = true
+
+[sources]
+crystallography = "https://www.mindat.org/min-3314.html"
