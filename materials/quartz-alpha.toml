@@ -1,0 +1,59 @@
+schema = 1
+name = "alpha-quartz"
+simulation_scale = "mesoscopic_surface"
+node_budget = "fixed"
+atomic_net = false
+
+[crystallography]
+crystal_system = "trigonal"
+point_group = "32"
+space_groups = ["P3_121", "P3_221"]
+a_angstrom = 4.9134
+c_angstrom = 5.4052
+handedness = "instance-selectable"
+
+[orientation]
+principal_axis = "c"
+transverse_classes = 3
+opposite_directions_make_visible_prism_sides = 6
+
+[growth]
+model = "kinetic_faceting"
+baseline_speed = 1.0
+# All speeds below are gameplay seeds, not measured quartz growth rates.
+
+[[growth.facet]]
+family = "{10-10}"
+label = "hexagonal prism"
+relative_speed = 0.30
+capture_width_degrees = 10.0
+
+[[growth.facet]]
+family = "{10-11}"
+label = "positive rhombohedron"
+relative_speed = 0.36
+capture_width_degrees = 10.0
+
+[[growth.facet]]
+family = "{01-11}"
+label = "negative rhombohedron"
+relative_speed = 0.43
+capture_width_degrees = 10.0
+
+[chiral_rule]
+enabled = true
+phase_step_degrees = 120.0
+# +1 and -1 produce mirror-related mesoscopic couplings.
+handedness_values = [-1, 1]
+strength = 0.12
+
+[net]
+# Three equivalent transverse classes around c; their opposites give six directions.
+direction_classes = ["a1", "a2", "a3", "c"]
+angle_stiffness = 0.65
+link_stiffness = 0.75
+edge_redistribution = 0.35
+
+[sources]
+crystallography = "https://www.mindat.org/min-3337.html"
+cell_reference = "https://rruff.info/uploads/ZK184_257.pdf"
