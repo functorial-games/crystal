@@ -34,7 +34,7 @@ for source in "${LUA_SRC}"/*.c; do
   case "${base}" in
     lua.c|luac.c) continue ;;
   esac
-  "${CC}" -std=c99 -O2 -fPIC -DLUA_USE_POSIX \
+  "${CC}" -std=c99 -O2 -fPIC \
     -I"${LUA_SRC}" -c "${source}" -o "${LUA_OBJ}/${base%.c}.o"
 done
 "${AR}" rcs "${DEPS}/liblua.a" "${LUA_OBJ}"/*.o
