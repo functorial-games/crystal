@@ -69,3 +69,5 @@ build_variant quartz 1 "Crystal Quartz"
 build_variant bismuth 2 "Crystal Bismuth"
 
 file app/src/*/jniLibs/armeabi-v7a/libcrystal.so
+
+# PR synchronize trigger after base workflow registration.
