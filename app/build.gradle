@@ -1,0 +1,47 @@
+plugins {
+    id "com.android.application"
+}
+
+android {
+    namespace "org.isomorphisms.crystal"
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "org.isomorphisms.crystal"
+        minSdk 21
+        targetSdk 34
+        versionCode 1
+        versionName "0.1-test"
+    }
+
+    flavorDimensions += "material"
+    productFlavors {
+        halite {
+            dimension "material"
+            applicationIdSuffix ".halite"
+            resValue "string", "app_name", "Crystal Halite"
+        }
+        quartz {
+            dimension "material"
+            applicationIdSuffix ".quartz"
+            resValue "string", "app_name", "Crystal Quartz"
+        }
+        bismuth {
+            dimension "material"
+            applicationIdSuffix ".bismuth"
+            resValue "string", "app_name", "Crystal Bismuth"
+        }
+    }
+
+    buildTypes {
+        debug {
+            debuggable true
+        }
+    }
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+}
