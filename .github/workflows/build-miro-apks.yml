@@ -26,7 +26,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: isomorphisms/android-NDK
-          ref: 7aa8e2dbb0e4d2726382e6c47994a710977563a6
+          ref: fd70de6aa5f98aa775be5788a952cb983dac4208
           path: .android-ndk
           sparse-checkout: apk
           sparse-checkout-cone-mode: true
