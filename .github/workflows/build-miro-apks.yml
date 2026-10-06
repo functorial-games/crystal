@@ -15,7 +15,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 50
     steps:
       - name: Checkout Crystal exact head
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -52,7 +52,17 @@ jobs:
           SDKMANAGER="$(find "$ANDROID_SDK_ROOT/cmdline-tools" -type f -name sdkmanager | sort | tail -n 1)"
           test -x "$SDKMANAGER"
           yes | "$SDKMANAGER" --licenses >/dev/null || true
-          "$SDKMANAGER" "platforms;android-34" "build-tools;34.0.0" "ndk;26.3.11579264"
+          "$SDKMANAGER" \
+            "platform-tools" \
+            "emulator" \
+            "platforms;android-34" \
+            "build-tools;34.0.0" \
+            "ndk;26.3.11579264" \
+            "system-images;android-34;default;x86_64"
+
+      - name: Normalize checked-out packager executable bit
+        shell: bash
+        run: chmod +x .android-ndk/apk/build-nativeactivity-apk.sh
 
       - name: Exercise shared direct packager hostile cases
         shell: bash
@@ -68,7 +78,6 @@ jobs:
       - name: Package direct NativeActivity candidate APKs
         shell: bash
         env:
-          ANDROID_BUILD_TOOLS: ${{ env.ANDROID_HOME }}/build-tools/34.0.0
           ANDROID_KEYSTORE: ${{ github.workspace }}/.test-signing/_/build/app/wegert-debug.keystore
           ANDROID_KEYSTORE_TYPE: PKCS12
           ANDROID_KEY_ALIAS: wegert-debug
@@ -83,6 +92,8 @@ jobs:
           ANDROID_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -Eeuo pipefail
+          export ANDROID_BUILD_TOOLS="$ANDROID_SDK_ROOT/build-tools/34.0.0"
+          test -x "$ANDROID_BUILD_TOOLS/aapt2"
           mkdir -p dist
           package_one() {
             flavor=$1
@@ -109,6 +120,144 @@ jobs:
           # Candidate integration uses the merged registry commit directly.
           # Final workflow will replace these calls with the composite producer gate.
           true
+
+      - name: Build stripped x86_64 diagnostic libraries
+        shell: bash
+        run: bash .github/scripts/build-miro.sh x86_64
+
+      - name: Package direct x86_64 diagnostic APKs
+        shell: bash
+        env:
+          ANDROID_KEYSTORE: ${{ github.workspace }}/.test-signing/_/build/app/wegert-debug.keystore
+          ANDROID_KEYSTORE_TYPE: PKCS12
+          ANDROID_KEY_ALIAS: wegert-debug
+          ANDROID_STORE_PASSWORD: wegert-debug
+          ANDROID_KEY_PASSWORD: wegert-debug
+          ANDROID_EXPECTED_CERT_SHA256: de9b1d47c5a65e6d46a204b79dd9ee566b9d3c9832ba81ebc4213d3392e92ff9
+          ANDROID_VERSION_CODE: "2"
+          ANDROID_VERSION_NAME: "0.2-emulator"
+          ANDROID_MIN_SDK: "21"
+          ANDROID_TARGET_SDK: "34"
+          ANDROID_REQUIRE_NO_DEX: "1"
+          ANDROID_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -Eeuo pipefail
+          export ANDROID_BUILD_TOOLS="$ANDROID_SDK_ROOT/build-tools/34.0.0"
+          mkdir -p emulator-apks emulator-evidence
+          package_one() {
+            flavor=$1
+            package=$2
+            export ANDROID_PACKAGE_ID="$package"
+            bash .android-ndk/apk/build-nativeactivity-apk.sh \
+              android/quartz-manifest.xml \
+              "build/native/x86_64/$flavor/libcrystal.so" \
+              x86_64 \
+              "emulator-apks/crystal-$flavor-x86_64.apk"
+          }
+          package_one halite org.isomorphisms.crystal.halite
+          package_one quartz org.isomorphisms.crystal.quartz
+          package_one bismuth org.isomorphisms.crystal.bismuth
+          sha256sum emulator-apks/*.apk | tee emulator-evidence/APK-SHA256SUMS.txt
+
+      - name: Boot Android 14 emulator
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -e /dev/kvm
+          sudo chmod 666 /dev/kvm
+          AVDMANAGER="$(find "$ANDROID_SDK_ROOT/cmdline-tools" -type f -name avdmanager | sort | tail -n 1)"
+          test -x "$AVDMANAGER"
+          echo no | "$AVDMANAGER" create avd \
+            --name crystal-ci \
+            --package "system-images;android-34;default;x86_64" \
+            --force
+          nohup "$ANDROID_SDK_ROOT/emulator/emulator" \
+            -avd crystal-ci \
+            -no-window \
+            -no-audio \
+            -no-boot-anim \
+            -no-snapshot \
+            -wipe-data \
+            -gpu swiftshader_indirect \
+            > emulator-evidence/emulator-stdout.txt 2>&1 &
+          echo $! > emulator-evidence/emulator.pid
+          adb wait-for-device
+          timeout 300 bash -c 'until [[ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d "\r")" == "1" ]]; do sleep 2; done'
+          adb shell wm size 576x1152
+          adb shell wm density 240
+          adb shell settings put system accelerometer_rotation 0
+          adb shell settings put system user_rotation 0
+          adb shell getprop > emulator-evidence/getprop.txt
+
+      - name: Exercise Crystal visually in emulator
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          capture() {
+            material=$1
+            state=$2
+            adb exec-out screencap -p > "emulator-evidence/$material-$state.png"
+            test -s "emulator-evidence/$material-$state.png"
+          }
+
+          run_material() {
+            material=$1
+            package=$2
+            apk="emulator-apks/crystal-$material-x86_64.apk"
+
+            unzip -l "$apk" | grep -q 'lib/x86_64/libcrystal.so'
+            adb install -r "$apk" > "emulator-evidence/$material-install.txt"
+            adb logcat -c
+            adb shell am force-stop "$package" || true
+            adb shell am start -W -n "$package/android.app.NativeActivity" \
+              > "emulator-evidence/$material-start.txt"
+
+            for _ in $(seq 1 40); do
+              adb shell pidof "$package" >/dev/null 2>&1 && break
+              sleep 0.25
+            done
+            adb shell pidof "$package" > "emulator-evidence/$material-pid.txt"
+            sleep 1
+
+            capture "$material" both
+            adb shell input tap 481 1089
+            sleep 0.4
+            capture "$material" solid
+            adb shell input tap 481 1089
+            sleep 0.4
+            capture "$material" net
+            adb shell input swipe 180 560 410 680 600
+            sleep 0.4
+            capture "$material" net-rotated
+
+            adb logcat -d -v threadtime > "emulator-evidence/$material-logcat.txt"
+            if grep -E 'FATAL EXCEPTION|Fatal signal|ANR in org\.isomorphisms\.crystal' \
+                "emulator-evidence/$material-logcat.txt"; then
+              echo "fatal Android/native failure in $material" >&2
+              return 1
+            fi
+
+            before=$(sha256sum "emulator-evidence/$material-net.png" | awk '{print $1}')
+            after=$(sha256sum "emulator-evidence/$material-net-rotated.png" | awk '{print $1}')
+            test "$before" != "$after"
+
+            adb shell am force-stop "$package"
+          }
+
+          run_material halite org.isomorphisms.crystal.halite
+          run_material quartz org.isomorphisms.crystal.quartz
+          run_material bismuth org.isomorphisms.crystal.bismuth
+
+      - name: Retain emulator evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: crystal-emulator-evidence
+          path: |
+            emulator-evidence/
+            emulator-apks/*.receipt.tsv
+          if-no-files-found: warn
 
       - name: Retain direct-NDK integration candidate
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
