@@ -222,14 +222,38 @@ jobs:
           package_one quartz org.isomorphisms.crystal.quartz
           package_one bismuth org.isomorphisms.crystal.bismuth
 
-      - name: Gate x86_64 producer artifacts
-        shell: bash
-        env:
-          AICI_REF: ${{ env.AICI_ANDROID_PRODUCER_REF }}
-        run: |
-          set -Eeuo pipefail
-          echo "x86_64 package bytes are retained for emulator behavior only."
-          echo "The ARMv7 distributable producer gate is authoritative for MIRO delivery."
+      - name: Gate Halite x86_64 producer artifact
+        uses: isomorphisms/ai-ci/android-producer@9fca932be8da84b806727ffc75845df39fa85233
+        with:
+          apk: emulator-apks/crystal-halite-x86_64.apk
+          root: .
+          packager-receipt: emulator-apks/crystal-halite-x86_64.receipt.tsv
+          packager-root: .android-ndk
+          expected-abi: x86_64
+          lane: test
+          receipt-output: emulator-evidence/crystal-halite-x86_64.producer.tsv
+
+      - name: Gate Quartz x86_64 producer artifact
+        uses: isomorphisms/ai-ci/android-producer@9fca932be8da84b806727ffc75845df39fa85233
+        with:
+          apk: emulator-apks/crystal-quartz-x86_64.apk
+          root: .
+          packager-receipt: emulator-apks/crystal-quartz-x86_64.receipt.tsv
+          packager-root: .android-ndk
+          expected-abi: x86_64
+          lane: test
+          receipt-output: emulator-evidence/crystal-quartz-x86_64.producer.tsv
+
+      - name: Gate Bismuth x86_64 producer artifact
+        uses: isomorphisms/ai-ci/android-producer@9fca932be8da84b806727ffc75845df39fa85233
+        with:
+          apk: emulator-apks/crystal-bismuth-x86_64.apk
+          root: .
+          packager-receipt: emulator-apks/crystal-bismuth-x86_64.receipt.tsv
+          packager-root: .android-ndk
+          expected-abi: x86_64
+          lane: test
+          receipt-output: emulator-evidence/crystal-bismuth-x86_64.producer.tsv
 
       - name: Boot Android 14 emulator
         shell: bash
