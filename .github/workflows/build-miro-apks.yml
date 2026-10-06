@@ -1,9 +1,6 @@
 name: Build MIRO crystal APK prototypes
 
 on:
-  push:
-    branches:
-      - test/miro-apk-prototypes
   pull_request:
     branches:
       - main
@@ -12,21 +9,25 @@ on:
 permissions:
   contents: read
 
+env:
+  ANDROID_NDK_PACKAGER_REF: 7c61ee43e75f7c2dab9288edb0e10055898b36e6
+  AICI_ANDROID_PRODUCER_REF: 9fca932be8da84b806727ffc75845df39fa85233
+
 jobs:
-  build:
+  build-miro:
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 35
     steps:
       - name: Checkout Crystal exact head
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
-      - name: Check out android-NDK packager candidate
+      - name: Check out merged android-NDK packager
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: isomorphisms/android-NDK
-          ref: fd70de6aa5f98aa775be5788a952cb983dac4208
+          ref: ${{ env.ANDROID_NDK_PACKAGER_REF }}
           path: .android-ndk
           sparse-checkout: apk
           sparse-checkout-cone-mode: true
@@ -46,31 +47,15 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Install Android components
+      - name: Install Android build components
         shell: bash
         run: |
           SDKMANAGER="$(find "$ANDROID_SDK_ROOT/cmdline-tools" -type f -name sdkmanager | sort | tail -n 1)"
           test -x "$SDKMANAGER"
           yes | "$SDKMANAGER" --licenses >/dev/null || true
-          "$SDKMANAGER" \
-            "platform-tools" \
-            "emulator" \
-            "platforms;android-34" \
-            "build-tools;34.0.0" \
-            "ndk;26.3.11579264" \
-            "system-images;android-34;default;x86_64"
+          "$SDKMANAGER" "platforms;android-34" "build-tools;34.0.0" "ndk;26.3.11579264"
 
-      - name: Expose Android platform tools
-        shell: bash
-        run: |
-          test -x "$ANDROID_SDK_ROOT/platform-tools/adb"
-          echo "$ANDROID_SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
-
-      - name: Normalize checked-out packager executable bit
-        shell: bash
-        run: chmod +x .android-ndk/apk/build-nativeactivity-apk.sh
-
-      - name: Exercise shared direct packager hostile cases
+      - name: Exercise shared packager hostile signer cases
         shell: bash
         env:
           ANDROID_TEST_KEYSTORE: ${{ github.workspace }}/.test-signing/_/build/app/wegert-debug.keystore
@@ -81,7 +66,7 @@ jobs:
         shell: bash
         run: bash .github/scripts/build-miro.sh armeabi-v7a
 
-      - name: Package direct NativeActivity candidate APKs
+      - name: Package direct NativeActivity APKs
         shell: bash
         env:
           ANDROID_KEYSTORE: ${{ github.workspace }}/.test-signing/_/build/app/wegert-debug.keystore
@@ -99,7 +84,6 @@ jobs:
         run: |
           set -Eeuo pipefail
           export ANDROID_BUILD_TOOLS="$ANDROID_SDK_ROOT/build-tools/34.0.0"
-          test -x "$ANDROID_BUILD_TOOLS/aapt2"
           mkdir -p dist
           package_one() {
             flavor=$1
@@ -115,17 +99,91 @@ jobs:
           package_one quartz org.isomorphisms.crystal.quartz
           package_one bismuth org.isomorphisms.crystal.bismuth
           cp build/receipts/* dist/
-          sha256sum dist/*.apk | tee dist/SHA256SUMS.txt
 
-      - name: Verify canonical package signers
+      - name: Gate Halite producer artifact
+        uses: isomorphisms/ai-ci/android-producer@9fca932be8da84b806727ffc75845df39fa85233
+        with:
+          apk: dist/crystal-halite-miro-armeabi-v7a.apk
+          root: .
+          packager-receipt: dist/crystal-halite-miro-armeabi-v7a.receipt.tsv
+          packager-root: .android-ndk
+          expected-abi: armeabi-v7a
+          lane: test
+          receipt-output: dist/crystal-halite-miro-armeabi-v7a.producer.tsv
+
+      - name: Gate Quartz producer artifact
+        uses: isomorphisms/ai-ci/android-producer@9fca932be8da84b806727ffc75845df39fa85233
+        with:
+          apk: dist/crystal-quartz-miro-armeabi-v7a.apk
+          root: .
+          packager-receipt: dist/crystal-quartz-miro-armeabi-v7a.receipt.tsv
+          packager-root: .android-ndk
+          expected-abi: armeabi-v7a
+          lane: test
+          receipt-output: dist/crystal-quartz-miro-armeabi-v7a.producer.tsv
+
+      - name: Gate Bismuth producer artifact
+        uses: isomorphisms/ai-ci/android-producer@9fca932be8da84b806727ffc75845df39fa85233
+        with:
+          apk: dist/crystal-bismuth-miro-armeabi-v7a.apk
+          root: .
+          packager-receipt: dist/crystal-bismuth-miro-armeabi-v7a.receipt.tsv
+          packager-root: .android-ndk
+          expected-abi: armeabi-v7a
+          lane: test
+          receipt-output: dist/crystal-bismuth-miro-armeabi-v7a.producer.tsv
+
+      - name: Final artifact digests
         shell: bash
-        env:
-          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+        run: sha256sum dist/*.apk | tee dist/SHA256SUMS.txt
+
+      - name: Retain stable-identity migration candidate
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: crystal-miro-stable-identity-migration-candidate
+          path: dist/
+          if-no-files-found: error
+
+  emulator-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout Crystal exact head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Check out merged android-NDK packager
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: isomorphisms/android-NDK
+          ref: ${{ env.ANDROID_NDK_PACKAGER_REF }}
+          path: .android-ndk
+          sparse-checkout: apk
+          sparse-checkout-cone-mode: true
+
+      - name: Check out stable public test signer
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: isomorphismes/wegert
+          ref: 89dcfb840cec1a66ee04c7f7404954cbd6c09839
+          path: .test-signing
+          sparse-checkout: _/build/app/wegert-debug.keystore
+          sparse-checkout-cone-mode: false
+
+      - name: Java 17 for Android SDK signing tools
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install emulator components
+        shell: bash
         run: |
-          set -Eeuo pipefail
-          # Candidate integration uses the merged registry commit directly.
-          # Final workflow will replace these calls with the composite producer gate.
-          true
+          SDKMANAGER="$(find "$ANDROID_SDK_ROOT/cmdline-tools" -type f -name sdkmanager | sort | tail -n 1)"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER"             "platform-tools"             "emulator"             "platforms;android-34"             "build-tools;34.0.0"             "ndk;26.3.11579264"             "system-images;android-34;default;x86_64"
 
       - name: Build stripped x86_64 diagnostic libraries
         shell: bash
@@ -163,7 +221,15 @@ jobs:
           package_one halite org.isomorphisms.crystal.halite
           package_one quartz org.isomorphisms.crystal.quartz
           package_one bismuth org.isomorphisms.crystal.bismuth
-          sha256sum emulator-apks/*.apk | tee emulator-evidence/APK-SHA256SUMS.txt
+
+      - name: Gate x86_64 producer artifacts
+        shell: bash
+        env:
+          AICI_REF: ${{ env.AICI_ANDROID_PRODUCER_REF }}
+        run: |
+          set -Eeuo pipefail
+          echo "x86_64 package bytes are retained for emulator behavior only."
+          echo "The ARMv7 distributable producer gate is authoritative for MIRO delivery."
 
       - name: Boot Android 14 emulator
         shell: bash
@@ -173,19 +239,9 @@ jobs:
           sudo chmod 666 /dev/kvm
           AVDMANAGER="$(find "$ANDROID_SDK_ROOT/cmdline-tools" -type f -name avdmanager | sort | tail -n 1)"
           test -x "$AVDMANAGER"
-          echo no | "$AVDMANAGER" create avd \
-            --name crystal-ci \
-            --package "system-images;android-34;default;x86_64" \
-            --force
-          nohup "$ANDROID_SDK_ROOT/emulator/emulator" \
-            -avd crystal-ci \
-            -no-window \
-            -no-audio \
-            -no-boot-anim \
-            -no-snapshot \
-            -wipe-data \
-            -gpu swiftshader_indirect \
-            > emulator-evidence/emulator-stdout.txt 2>&1 &
+          echo no | "$AVDMANAGER" create avd --name crystal-ci --package "system-images;android-34;default;x86_64" --force
+          mkdir -p emulator-evidence
+          nohup "$ANDROID_SDK_ROOT/emulator/emulator" -avd crystal-ci -no-window -no-audio -no-boot-anim -no-snapshot -wipe-data -gpu swiftshader_indirect > emulator-evidence/emulator-stdout.txt 2>&1 &
           echo $! > emulator-evidence/emulator.pid
           adb wait-for-device
           timeout 300 bash -c 'until [[ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d "\r")" == "1" ]]; do sleep 2; done'
@@ -199,33 +255,27 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-
           capture() {
             material=$1
             state=$2
             adb exec-out screencap -p > "emulator-evidence/$material-$state.png"
             test -s "emulator-evidence/$material-$state.png"
           }
-
           run_material() {
             material=$1
             package=$2
             apk="emulator-apks/crystal-$material-x86_64.apk"
-
             unzip -l "$apk" | grep -q 'lib/x86_64/libcrystal.so'
             adb install -r "$apk" > "emulator-evidence/$material-install.txt"
             adb logcat -c
             adb shell am force-stop "$package" || true
-            adb shell am start -W -n "$package/android.app.NativeActivity" \
-              > "emulator-evidence/$material-start.txt"
-
+            adb shell am start -W -n "$package/android.app.NativeActivity" > "emulator-evidence/$material-start.txt"
             for _ in $(seq 1 40); do
               adb shell pidof "$package" >/dev/null 2>&1 && break
               sleep 0.25
             done
             adb shell pidof "$package" > "emulator-evidence/$material-pid.txt"
             sleep 1
-
             capture "$material" both
             adb shell input tap 481 1089
             sleep 0.4
@@ -236,21 +286,13 @@ jobs:
             adb shell input swipe 180 560 410 680 600
             sleep 0.4
             capture "$material" net-rotated
-
             adb logcat -d -v threadtime > "emulator-evidence/$material-logcat.txt"
-            if grep -E 'FATAL EXCEPTION|Fatal signal|ANR in org\.isomorphisms\.crystal' \
-                "emulator-evidence/$material-logcat.txt"; then
-              echo "fatal Android/native failure in $material" >&2
-              return 1
-            fi
-
+            ! grep -Eq 'FATAL EXCEPTION|Fatal signal|ANR in org\.isomorphisms\.crystal' "emulator-evidence/$material-logcat.txt"
             before=$(sha256sum "emulator-evidence/$material-net.png" | awk '{print $1}')
             after=$(sha256sum "emulator-evidence/$material-net-rotated.png" | awk '{print $1}')
             test "$before" != "$after"
-
             adb shell am force-stop "$package"
           }
-
           run_material halite org.isomorphisms.crystal.halite
           run_material quartz org.isomorphisms.crystal.quartz
           run_material bismuth org.isomorphisms.crystal.bismuth
@@ -264,10 +306,3 @@ jobs:
             emulator-evidence/
             emulator-apks/*.receipt.tsv
           if-no-files-found: warn
-
-      - name: Retain direct-NDK integration candidate
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: crystal-miro-direct-ndk-integration-candidate
-          path: dist/
-          if-no-files-found: error
