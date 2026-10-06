@@ -60,6 +60,12 @@ jobs:
             "ndk;26.3.11579264" \
             "system-images;android-34;default;x86_64"
 
+      - name: Expose Android platform tools
+        shell: bash
+        run: |
+          test -x "$ANDROID_SDK_ROOT/platform-tools/adb"
+          echo "$ANDROID_SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
+
       - name: Normalize checked-out packager executable bit
         shell: bash
         run: chmod +x .android-ndk/apk/build-nativeactivity-apk.sh
