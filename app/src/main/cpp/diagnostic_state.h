@@ -8,11 +8,11 @@ typedef struct {
     int first, second, touches;
     bool pinching, minimum_hit, maximum_hit;
 } CrystalZoom;
-static inline void CrystalZoomReset(CrystalZoom *z) {
+static inline void crystal_zoom_reset(CrystalZoom *z) {
     *z = (CrystalZoom){.distance=7.65f, .minimum=2.6f, .maximum=18.0f,
         .requested=7.65f, .applied=1.0f, .first=-1, .second=-1};
 }
-static inline void CrystalZoomApply(CrystalZoom *z, float requested) {
+static inline void crystal_zoom_apply(CrystalZoom *z, float requested) {
     if (!isfinite(requested) || requested <= 0.0f) return;
     float before = z->distance;
     z->requested=requested;
@@ -21,7 +21,7 @@ static inline void CrystalZoomApply(CrystalZoom *z, float requested) {
     z->distance=fminf(z->maximum, fmaxf(z->minimum, requested));
     z->applied=before/z->distance;
 }
-static inline void CrystalZoomTouches(CrystalZoom *z, int count, int first, int second, float span) {
+static inline void crystal_zoom_touches(CrystalZoom *z, int count, int first, int second, float span) {
     /* Pointer identity, rather than array order, establishes continuity. */
     if (first > second) { int temporary=first; first=second; second=temporary; }
     z->touches=count;
@@ -30,7 +30,7 @@ static inline void CrystalZoomTouches(CrystalZoom *z, int count, int first, int 
         z->applied=1.0f; return;
     }
     if (z->pinching && z->first==first && z->second==second && z->span>1.0f)
-        CrystalZoomApply(z, z->distance*z->span/span);
+        crystal_zoom_apply(z, z->distance*z->span/span);
     else z->applied=1.0f;
     z->first=first; z->second=second; z->span=span; z->pinching=true;
 }

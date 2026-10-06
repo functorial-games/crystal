@@ -3,27 +3,27 @@
 #include "../app/src/main/cpp/diagnostic_state.h"
 int main(void) {
     CrystalZoom z;
-    CrystalZoomReset(&z);
-    CrystalZoomTouches(&z,1,7,-1,0);
-    CrystalZoomTouches(&z,2,7,9,100);
+    crystal_zoom_reset(&z);
+    crystal_zoom_touches(&z,1,7,-1,0);
+    crystal_zoom_touches(&z,2,7,9,100);
     assert(fabsf(z.distance-7.65f)<0.001f);
-    CrystalZoomTouches(&z,2,9,7,200);
+    crystal_zoom_touches(&z,2,9,7,200);
     assert(fabsf(z.distance-3.825f)<0.001f);
-    CrystalZoomTouches(&z,1,9,-1,0);
-    CrystalZoomTouches(&z,2,9,12,300);
+    crystal_zoom_touches(&z,1,9,-1,0);
+    crystal_zoom_touches(&z,2,9,12,300);
     assert(fabsf(z.distance-3.825f)<0.001f);
-    CrystalZoomTouches(&z,2,9,12,0.5f);
-    CrystalZoomTouches(&z,2,9,12,100);
+    crystal_zoom_touches(&z,2,9,12,0.5f);
+    crystal_zoom_touches(&z,2,9,12,100);
     assert(fabsf(z.distance-3.825f)<0.001f);
-    CrystalZoomTouches(&z,2,9,12,50);
+    crystal_zoom_touches(&z,2,9,12,50);
     assert(fabsf(z.distance-7.65f)<0.001f);
-    CrystalZoomApply(&z,1000);
+    crystal_zoom_apply(&z,1000);
     assert(z.distance==18.0f && z.maximum_hit);
-    CrystalZoomApply(&z,0.01f);
+    crystal_zoom_apply(&z,0.01f);
     assert(z.distance==2.6f && z.minimum_hit);
-    CrystalZoomApply(&z,NAN);
+    crystal_zoom_apply(&z,NAN);
     assert(z.distance==2.6f);
-    CrystalZoomReset(&z);
+    crystal_zoom_reset(&z);
     assert(!z.pinching && z.distance==7.65f);
     /* Projection-size oracle independent of input-state implementation. At
      * fixed fovy and viewport, doubling depth halves projected size. */

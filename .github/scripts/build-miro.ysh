@@ -88,10 +88,14 @@ proc variant(material, kind, title) {
   /usr/bin/mkdir -p "$work/native/$material"
   "$cc" @common @architecture @diagnostic -DPLATFORM_ANDROID "-DCRYSTAL_KIND=$kind" "-DCRYSTAL_TITLE=\"$title\"" "-DCRYSTAL_SOURCE_COMMIT=\"$source_commit\"" "-DCRYSTAL_PACKAGE_ID=\"org.isomorphisms.crystal.$material\"" "-I$raylib/src" "-I$lua" -c "$root/app/src/main/cpp/crystal.c" -o "$work/$material.o"
   printf '%s-compile\tndk\t%s\tPASS\n' "$material" "$compiler_hash" >> "$work/stages.tsv"
+  for unit in crystal_model crystal_render; do
+    "$cc" @common @architecture -DPLATFORM_ANDROID "-I$raylib/src" -c "$root/app/src/main/cpp/$unit.c" -o "$work/native/$material/$unit.o"
+  done
   var native = "$work/native/$material/libcrystal.so"
   var lua_objects = glob("$work/lua/*.o")
   var ray_objects = glob("$work/ray/*.o")
-  "$cc" "--target=$target" "--ld-path=$linker" @architecture -shared "$work/$material.o" @lua_objects @ray_objects -Wl,-soname,libcrystal.so -Wl,-u,ANativeActivity_onCreate -Wl,--no-undefined -Wl,--gc-sections -Wl,--wrap=fopen -landroid -llog -lEGL -lGLESv2 -lOpenSLES -ldl -lm -lc -latomic -o "$native"
+  "$cc" "--target=$target" "--ld-path=$linker" @architecture -shared "$work/$material.o" "$work/native/$material/crystal_model.o" "$work/native/$material/crystal_render.o" @lua_objects @ray_objects -Wl,-soname,libcrystal.so -Wl,-u,ANativeActivity_onCreate -Wl,--no-undefined -Wl,--gc-sections -Wl,--wrap=fopen -landroid -llog -lEGL -lGLESv2 -lOpenSLES -ldl -lm -lc -latomic -o "$native"
+  /usr/bin/rm "$work/native/$material/crystal_model.o" "$work/native/$material/crystal_render.o"
   printf '%s-link\tndk\t%s\tPASS\n' "$material" "$linker_hash" >> "$work/stages.tsv"
   var before = $(/usr/bin/stat -c %s "$native")
   "$strip" --strip-unneeded "$native"
@@ -104,8 +108,9 @@ variant halite 0 'Crystal Halite'
 variant quartz 1 'Crystal Quartz'
 variant bismuth 2 'Crystal Bismuth'
 var source_blob = $(/usr/bin/sha256sum "$root/app/src/main/cpp/crystal.c" | /usr/bin/awk '{print $1}')
+/usr/bin/sha256sum "$root/app/src/main/cpp/crystal.c" "$root/app/src/main/cpp/crystal_model.c" "$root/app/src/main/cpp/crystal_model.h" "$root/app/src/main/cpp/crystal_render.c" "$root/app/src/main/cpp/crystal_render.h" "$root/app/src/main/cpp/diagnostic_state.h" > "$work/application-sources.sha256"
 printf 'schema\tcrystal-native-candidate-v1\nsource_commit\t%s\nsource_blob_sha256\t%s\nraylib_commit\t%s\nlua_archive_sha256\t%s\nndk_revision\t27.2.12479018\nabi\t%s\nproducer_authentication\tNOT_VERIFIED\n' "$source_commit" "$source_blob" "$raylib_commit" "$lua_digest" "$abi" > "$work/materials.tsv"
 # A complete native candidate becomes visible only after all variants pass.
 /usr/bin/mv "$work/native" "$output/native"
-/usr/bin/mv "$work/stages.tsv" "$work/sizes.tsv" "$work/materials.tsv" "$output/"
+/usr/bin/mv "$work/stages.tsv" "$work/sizes.tsv" "$work/materials.tsv" "$work/application-sources.sha256" "$output/"
 echo 'Crystal C/Lua/raylib native candidate: PASS; producer promotion remains separate'
