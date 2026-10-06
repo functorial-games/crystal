@@ -8,11 +8,14 @@ import os
 import shutil
 import subprocess
 import time
+import math
 
 def main() → None:
     parser ∈ ArgumentParser ← ArgumentParser()
     for name in ["emulator", "adb", "image", "apk", "host-libs", "api", "source-commit", "output"]:
         parser.add_argument("--" + name, required=True)
+    parser.add_argument("--reuse-private-data", default="")
+    parser.add_argument("--boot-budget", default="420")
     args ∈ object ← parser.parse_args()
     emulator ∈ str ← args.emulator
     adb ∈ str ← args.adb
@@ -22,6 +25,12 @@ def main() → None:
     apk ∈ str ← args.apk
     host_libs ∈ str ← args.host_libs
     output ∈ str ← args.output
+    reuse ∈ str ← args.reuse_private_data
+    budget_text ∈ str ← args.boot_budget
+    budget ∈ float ← float(budget_text)
+    finite ∈ bool ← math.isfinite(budget)
+    if finite == False or budget < 30.0 or budget > 900.0:
+        raise RuntimeError("INVALID_BOOT_BUDGET:30..900 seconds")
     root ∈ Path ← Path(output).resolve()
     root.mkdir(mode=448, exist_ok=False)
     environment ∈ dict[str, str] ← dict()
@@ -34,26 +43,37 @@ def main() → None:
     avd ∈ Path ← root.joinpath("avds/crystal-fixture.avd")
     avd.mkdir(parents=True)
     root.joinpath("avds/crystal-fixture.ini").write_text("avd.ini.encoding=UTF-8\npath=" + str(avd) + "\ntarget=android-" + api + "\n")
-    avd.joinpath("config.ini").write_text("AvdId=crystal-fixture\nhw.cpu.arch=x86_64\nhw.cpu.ncore=2\nhw.ramSize=1024\nhw.lcd.width=576\nhw.lcd.height=1024\nhw.lcd.density=160\nimage.sysdir.1=" + image + "/\nabi.type=x86_64\ntag.id=default\nhw.gpu.enabled=yes\nhw.gpu.mode=swiftshader_indirect\ndisk.dataPartition.size=1024M\n")
+    avd.joinpath("config.ini").write_text("AvdId=crystal-fixture\nhw.cpu.arch=x86_64\nhw.cpu.ncore=2\nhw.ramSize=2048\nhw.lcd.width=576\nhw.lcd.height=1024\nhw.lcd.density=160\nimage.sysdir.1=" + image + "/\nabi.type=x86_64\ntag.id=default\nhw.gpu.enabled=yes\nhw.gpu.mode=swiftshader_indirect\ndisk.dataPartition.size=1024M\n")
     # Let the emulator initialize/format a new disposable userdata image. Copying
     # the system-image sentinel here made it look initialized and caused reboot.
-    serial ← "localhost:5581"
+    serial ← "emulator-5580"
     server_log ∈ object ← root.joinpath("adb-server.log").open("wb")
-    server ∈ subprocess.Popen ← subprocess.Popen([adb, "-P", "5039", "nodaemon", "server"], env=environment, stdout=server_log, stderr=server_log, start_new_session=True)
-    command ∈ list[str] ← [emulator, "-sysdir", image, "-kernel", image + "/kernel-ranchu", "-ramdisk", image + "/ramdisk.img", "-system", image + "/system.img", "-data", str(root.joinpath("userdata.img")), "-cache", str(root.joinpath("cache.img")), "-no-window", "-no-audio", "-no-snapshot", "-accel", "off", "-gpu", "swiftshader_indirect", "-memory", "1024", "-cores", "2", "-port", "5580", "-skin", "576x1024"]
+    server ∈ subprocess.Popen ← subprocess.Popen([adb, "-L", "tcp:localhost:5039", "server", "nodaemon"], env=environment, stdout=server_log, stderr=server_log, start_new_session=True)
+    command ∈ list[str] ← [emulator, "-sysdir", image, "-kernel", image + "/kernel-ranchu", "-ramdisk", image + "/ramdisk.img", "-system", image + "/system.img", "-data", str(root.joinpath("userdata.img")), "-cache", str(root.joinpath("cache.img")), "-no-window", "-no-audio", "-no-snapshot", "-accel", "off", "-gpu", "swiftshader_indirect", "-memory", "2048", "-cores", "2", "-port", "5580", "-skin", "576x1024"]
     command.insert(1, "crystal-fixture")
     command.insert(1, "-avd")
     command.append("-show-kernel")
     command.append("-writable-system")
     command.append("-verbose")
-    command.append("-wipe-data")
+    if reuse == "":
+        command.append("-wipe-data")
+    else:
+        # Explicitly reused disposable host experiment data, never a phone.
+        shutil.copyfile(reuse + "/userdata.img", root.joinpath("userdata.img"))
+        shutil.copyfile(reuse + "/userdata.img.qcow2", root.joinpath("userdata.img.qcow2"))
+        for encryption in ["encryptionkey.img", "encryptionkey.img.qcow2"]:
+            material ∈ Path ← Path(reuse).joinpath(encryption)
+            exists ∈ bool ← material.exists()
+            if exists:
+                shutil.copyfile(str(material), root.joinpath(encryption))
+        root.joinpath("reused-private-data.txt").write_text(reuse + "\n")
     root.joinpath("command.json").write_text(json.dumps(command))
     log ∈ object ← root.joinpath("emulator.log").open("wb")
     process ∈ subprocess.Popen ← subprocess.Popen(command, env=environment, stdout=log, stderr=log, start_new_session=True)
     ledger ← "case\texpected\tresult\n"
     try:
         started ∈ float ← time.monotonic()
-        deadline ∈ float ← started + 420.0
+        deadline ∈ float ← started + budget
         ready ← False
         now ∈ float ← time.monotonic()
         while now < deadline:
@@ -67,13 +87,17 @@ def main() → None:
             server_status ∈ object ← server.poll()
             if server_status != None:
                 raise RuntimeError("ADB_HOST_SERVER_EXITED:" + str(server_status))
-            subprocess.run([adb, "connect", "localhost:5581"], env=environment, capture_output=True, timeout=10)
-            probe ∈ subprocess.CompletedProcess ← subprocess.run([adb, "-s", serial, "shell", "getprop", "sys.boot_completed"], env=environment, capture_output=True, timeout=10)
-            boot ∈ bytes ← probe.stdout
-            trimmed ∈ bytes ← boot.strip()
-            if trimmed == b"1":
-                ready ← True
-                break
+            try:
+                probe ∈ subprocess.CompletedProcess ← subprocess.run([adb, "-s", serial, "shell", "getprop", "sys.boot_completed"], env=environment, capture_output=True, timeout=10)
+                boot ∈ bytes ← probe.stdout
+                root.joinpath("last-boot-probe.stdout").write_bytes(boot)
+                root.joinpath("last-boot-probe.stderr").write_bytes(probe.stderr)
+                trimmed ∈ bytes ← boot.strip()
+                if trimmed == b"1":
+                    ready ← True
+                    break
+            except subprocess.TimeoutExpired:
+                root.joinpath("boot-probe-timeout.txt").write_text("bounded getprop timed out during boot; not a capture PASS\n")
             time.sleep(2)
             now ← time.monotonic()
         if ready == False:
@@ -124,7 +148,7 @@ def main() → None:
             decoded ∈ str ← payload.decode(errors="replace")
             lines ∈ list[str] ← decoded.splitlines()
             for line in lines:
-                if line.startswith("{\"source_commit\""):
+                if line.startswith("{\"schema\":\"crystal-state-v1\""):
                     state ← json.loads(line)
             if len(state) == 0:
                 raise RuntimeError("INSTRUMENTATION_GAP:" + trial)
@@ -161,6 +185,13 @@ def main() → None:
         result.__setitem__("status", "FAIL")
         result.__setitem__("failure", str(failure))
         root.joinpath("failure.json").write_text(json.dumps(result))
+        try:
+            diagnostic ∈ subprocess.CompletedProcess ← subprocess.run([adb, "-s", serial, "logcat", "-d", "-t", "150", "-v", "brief", "AndroidRuntime:E", "Watchdog:E", "PackageManager:E", "*:S"], env=environment, capture_output=True, timeout=15)
+            root.joinpath("failure-channel.stdout").write_bytes(diagnostic.stdout)
+            root.joinpath("failure-channel.stderr").write_bytes(diagnostic.stderr)
+            root.joinpath("failure-channel.exit").write_text(str(diagnostic.returncode))
+        except subprocess.TimeoutExpired:
+            root.joinpath("failure-channel.exit").write_text("TIMEOUT:15 seconds; original failure retained")
         raise
     finally:
         process.terminate()
