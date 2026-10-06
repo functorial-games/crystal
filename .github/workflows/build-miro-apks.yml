@@ -21,6 +21,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Check out stable public test signer
+        uses: actions/checkout@v4
+        with:
+          repository: isomorphismes/wegert
+          ref: 89dcfb840cec1a66ee04c7f7404954cbd6c09839
+          path: .test-signing
+          sparse-checkout: _/build/app/wegert-debug.keystore
+          sparse-checkout-cone-mode: false
+
       - name: Java 17
         uses: actions/setup-java@v4
         with:
@@ -44,8 +53,10 @@ jobs:
         shell: bash
         run: bash .github/scripts/build-miro.sh
 
-      - name: Package APKs
+      - name: Package APKs with stable test signer
         shell: bash
+        env:
+          CRYSTAL_TEST_KEYSTORE: ${{ github.workspace }}/.test-signing/_/build/app/wegert-debug.keystore
         run: |
           gradle --no-daemon :app:assembleHaliteDebug :app:assembleQuartzDebug :app:assembleBismuthDebug
           mkdir -p dist
@@ -53,6 +64,24 @@ jobs:
           cp app/build/outputs/apk/quartz/debug/app-quartz-debug.apk dist/crystal-quartz-miro-armeabi-v7a.apk
           cp app/build/outputs/apk/bismuth/debug/app-bismuth-debug.apk dist/crystal-bismuth-miro-armeabi-v7a.apk
           sha256sum dist/*.apk | tee dist/SHA256SUMS.txt
+
+      - name: Verify Halite signer
+        uses: isomorphisms/ai-ci/android-signing@f99f2025fd085a3cda6d19e5e8a6deeeed7bcaf9
+        with:
+          apk: dist/crystal-halite-miro-armeabi-v7a.apk
+          lane: test
+
+      - name: Verify Quartz signer
+        uses: isomorphisms/ai-ci/android-signing@f99f2025fd085a3cda6d19e5e8a6deeeed7bcaf9
+        with:
+          apk: dist/crystal-quartz-miro-armeabi-v7a.apk
+          lane: test
+
+      - name: Verify Bismuth signer
+        uses: isomorphisms/ai-ci/android-signing@f99f2025fd085a3cda6d19e5e8a6deeeed7bcaf9
+        with:
+          apk: dist/crystal-bismuth-miro-armeabi-v7a.apk
+          lane: test
 
       - name: Upload APKs
         uses: actions/upload-artifact@v4
