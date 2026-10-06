@@ -13,8 +13,14 @@ jobs:
       - name: Require registered producer deployment
         shell: sh
         run: |
-          test -x /opt/aici/android-producer/current/runtime/grease || { echo '::error::BLOCKED: qualified Android producer release and stable-lane approval are unavailable'; exit 1; }
-          exec /usr/bin/env -i PATH=/usr/bin:/bin /opt/aici/android-producer/current/runtime/grease /opt/aici/android-producer/current/policy/android-producer/supervise.ysh
+          test -x /opt/catfood/bin/ithon && test -f /opt/flexible-pipes/current/scripts/run-pipeline || { echo '::error::BLOCKED: registered Android operation is not deployed'; exit 1; }
+      - name: Submit explicit candidate source to the registered producer
+        shell: /opt/catfood/bin/grease {0}
+        env:
+          REQUEST_REF: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          /opt/catfood/bin/ithon /opt/flexible-pipes/current/scripts/crystal-build-request.pi --ref "$REQUEST_REF" --output "$RUNNER_TEMP/crystal-request.json"
+          python3 /opt/flexible-pipes/current/scripts/run-pipeline android-native-apk --request "$RUNNER_TEMP/crystal-request.json" --runs-root "$RUNNER_TEMP/crystal-runs"
 # This repository does not deploy policy or choose a historical release.
 # Final consumer publication uses Cat Food's authenticated deliver-apk.ysh.
 # Emulator/MIRO replacement, pinch-zoom and wireframe need separate evidence.

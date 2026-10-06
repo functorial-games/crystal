@@ -1,0 +1,185 @@
+"""Private software-emulator experiment; cannot establish MIRO A1 acceptance."""
+from argparse import ArgumentParser
+from pathlib import Path
+from builtins import dict, list, len, float, abs, RuntimeError, Exception
+import hashlib
+import json
+import os
+import shutil
+import subprocess
+import time
+
+def main() → None:
+    parser ∈ ArgumentParser ← ArgumentParser()
+    for name in ["emulator", "adb", "image", "apk", "host-libs", "api", "source-commit", "output"]:
+        parser.add_argument("--" + name, required=True)
+    args ∈ object ← parser.parse_args()
+    emulator ∈ str ← args.emulator
+    adb ∈ str ← args.adb
+    image ∈ str ← args.image
+    api ∈ str ← args.api
+    source_commit ∈ str ← args.source_commit
+    apk ∈ str ← args.apk
+    host_libs ∈ str ← args.host_libs
+    output ∈ str ← args.output
+    root ∈ Path ← Path(output).resolve()
+    root.mkdir(mode=448, exist_ok=False)
+    environment ∈ dict[str, str] ← dict()
+    environment.__setitem__("PATH", "/usr/bin:/bin")
+    environment.__setitem__("HOME", str(root))
+    environment.__setitem__("LD_LIBRARY_PATH", host_libs)
+    environment.__setitem__("ANDROID_ADB_SERVER_PORT", "5039")
+    environment.__setitem__("ADB_SERVER_SOCKET", "tcp:localhost:5039")
+    environment.__setitem__("ANDROID_AVD_HOME", str(root.joinpath("avds")))
+    avd ∈ Path ← root.joinpath("avds/crystal-fixture.avd")
+    avd.mkdir(parents=True)
+    root.joinpath("avds/crystal-fixture.ini").write_text("avd.ini.encoding=UTF-8\npath=" + str(avd) + "\ntarget=android-" + api + "\n")
+    avd.joinpath("config.ini").write_text("AvdId=crystal-fixture\nhw.cpu.arch=x86_64\nhw.cpu.ncore=2\nhw.ramSize=1024\nhw.lcd.width=576\nhw.lcd.height=1024\nhw.lcd.density=160\nimage.sysdir.1=" + image + "/\nabi.type=x86_64\ntag.id=default\nhw.gpu.enabled=yes\nhw.gpu.mode=swiftshader_indirect\ndisk.dataPartition.size=1024M\n")
+    # Let the emulator initialize/format a new disposable userdata image. Copying
+    # the system-image sentinel here made it look initialized and caused reboot.
+    serial ← "localhost:5581"
+    server_log ∈ object ← root.joinpath("adb-server.log").open("wb")
+    server ∈ subprocess.Popen ← subprocess.Popen([adb, "-P", "5039", "nodaemon", "server"], env=environment, stdout=server_log, stderr=server_log, start_new_session=True)
+    command ∈ list[str] ← [emulator, "-sysdir", image, "-kernel", image + "/kernel-ranchu", "-ramdisk", image + "/ramdisk.img", "-system", image + "/system.img", "-data", str(root.joinpath("userdata.img")), "-cache", str(root.joinpath("cache.img")), "-no-window", "-no-audio", "-no-snapshot", "-accel", "off", "-gpu", "swiftshader_indirect", "-memory", "1024", "-cores", "2", "-port", "5580", "-skin", "576x1024"]
+    command.insert(1, "crystal-fixture")
+    command.insert(1, "-avd")
+    command.append("-show-kernel")
+    command.append("-writable-system")
+    command.append("-verbose")
+    command.append("-wipe-data")
+    root.joinpath("command.json").write_text(json.dumps(command))
+    log ∈ object ← root.joinpath("emulator.log").open("wb")
+    process ∈ subprocess.Popen ← subprocess.Popen(command, env=environment, stdout=log, stderr=log, start_new_session=True)
+    ledger ← "case\texpected\tresult\n"
+    try:
+        started ∈ float ← time.monotonic()
+        deadline ∈ float ← started + 420.0
+        ready ← False
+        now ∈ float ← time.monotonic()
+        while now < deadline:
+            status ∈ object ← process.poll()
+            if status != None:
+                raise RuntimeError("EMULATOR_STARTUP_FAILED:" + str(status))
+            kernel_log ∈ str ← root.joinpath("emulator.log").read_text(errors="replace")
+            partition_failure ∈ bool ← kernel_log.__contains__("partition(s) not found after polling timeout: super, vbmeta")
+            if partition_failure:
+                raise RuntimeError("EMULATOR_REQUIRED_PARTITIONS_UNAVAILABLE")
+            server_status ∈ object ← server.poll()
+            if server_status != None:
+                raise RuntimeError("ADB_HOST_SERVER_EXITED:" + str(server_status))
+            subprocess.run([adb, "connect", "localhost:5581"], env=environment, capture_output=True, timeout=10)
+            probe ∈ subprocess.CompletedProcess ← subprocess.run([adb, "-s", serial, "shell", "getprop", "sys.boot_completed"], env=environment, capture_output=True, timeout=10)
+            boot ∈ bytes ← probe.stdout
+            trimmed ∈ bytes ← boot.strip()
+            if trimmed == b"1":
+                ready ← True
+                break
+            time.sleep(2)
+            now ← time.monotonic()
+        if ready == False:
+            raise RuntimeError("EMULATOR_BOOT_TIMEOUT")
+        install ∈ subprocess.CompletedProcess ← subprocess.run([adb, "-s", serial, "install", apk], env=environment, capture_output=True, timeout=60)
+        root.joinpath("install.stdout").write_bytes(install.stdout)
+        root.joinpath("install.stderr").write_bytes(install.stderr)
+        install_code ∈ int ← install.returncode
+        if install_code != 0:
+            raise RuntimeError("EMULATOR_INSTALL_FAILED")
+        launch ∈ subprocess.CompletedProcess ← subprocess.run([adb, "-s", serial, "shell", "am", "start", "-W", "-n", "org.isomorphisms.crystal.halite/android.app.NativeActivity"], env=environment, capture_output=True, timeout=30)
+        root.joinpath("launch.stdout").write_bytes(launch.stdout)
+        launch_code ∈ int ← launch.returncode
+        if launch_code != 0:
+            raise RuntimeError("EMULATOR_LAUNCH_FAILED")
+        for trial in ["startup", "maximum", "minimum", "reset", "edges", "solid"]:
+            times ← 0
+            x ← 58
+            y ← 886
+            if trial == "maximum":
+                times ← 12
+                x ← 146
+            elif trial == "minimum":
+                times ← 16
+            elif trial == "reset":
+                times ← 1
+                x ← 95
+                y ← 961
+            elif trial == "edges":
+                times ← 2
+                x ← 481
+                y ← 961
+            elif trial == "solid":
+                times ← 2
+                x ← 481
+                y ← 961
+            for index in range(times):
+                tap ∈ subprocess.CompletedProcess ← subprocess.run([adb, "-s", serial, "shell", "input", "tap", str(x), str(y)], env=environment, capture_output=True, timeout=10)
+                tap_code ∈ int ← tap.returncode
+                if tap_code != 0:
+                    raise RuntimeError("EMULATOR_INPUT_FAILED")
+                time.sleep(0.25)
+            time.sleep(2)
+            logs ∈ subprocess.CompletedProcess ← subprocess.run([adb, "-s", serial, "logcat", "-d", "-t", "200", "-v", "raw", "CrystalState:I", "*:S"], env=environment, capture_output=True, timeout=10)
+            payload ∈ bytes ← logs.stdout
+            root.joinpath(trial + ".log").write_bytes(payload)
+            state ∈ dict[str, object] ← dict()
+            decoded ∈ str ← payload.decode(errors="replace")
+            lines ∈ list[str] ← decoded.splitlines()
+            for line in lines:
+                if line.startswith("{\"source_commit\""):
+                    state ← json.loads(line)
+            if len(state) == 0:
+                raise RuntimeError("INSTRUMENTATION_GAP:" + trial)
+            raw_distance ∈ str ← state.get("camera_distance", "nan")
+            observed_source ∈ str ← state.get("source_commit", "")
+            geometry ∈ str ← state.get("geometry_result", "")
+            frozen ∈ str ← state.get("frozen", "")
+            mode ∈ str ← state.get("render_mode", "")
+            if observed_source != source_commit or geometry != "PASS" or frozen != "1":
+                raise RuntimeError("APPLICATION_STATE_BINDING_FAILED:" + trial)
+            if trial == "edges" and mode != "1":
+                raise RuntimeError("EXPECTED_EDGES_MODE")
+            if trial == "solid" and mode != "0":
+                raise RuntimeError("EXPECTED_SOLID_MODE")
+            distance ∈ float ← float(raw_distance)
+            expected ← 7.65
+            if trial == "maximum":
+                expected ← 18.0
+            elif trial == "minimum":
+                expected ← 2.6
+            difference ∈ float ← abs(distance - expected)
+            if difference > 0.01:
+                raise RuntimeError("ZOOM_EXPECTATION_FAILED:" + trial + ":" + str(distance))
+            frame ∈ subprocess.CompletedProcess ← subprocess.run([adb, "-s", serial, "exec-out", "screencap", "-p"], env=environment, capture_output=True, timeout=15)
+            frame_code ∈ int ← frame.returncode
+            if frame_code != 0:
+                raise RuntimeError("FRAME_CAPTURE_FAILED")
+            root.joinpath(trial + ".png").write_bytes(frame.stdout)
+            ledger ← ledger + trial + "\tnumeric zoom and state; image for review\tPASS\n"
+            root.joinpath("results.tsv").write_text(ledger)
+        print(ledger)
+    except Exception as failure:
+        result ∈ dict[str, str] ← dict()
+        result.__setitem__("status", "FAIL")
+        result.__setitem__("failure", str(failure))
+        root.joinpath("failure.json").write_text(json.dumps(result))
+        raise
+    finally:
+        process.terminate()
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=10)
+        log.close()
+        server.terminate()
+        try:
+            server.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            server.kill()
+            server.wait(timeout=10)
+        server_log.close()
+        scope ∈ dict[str, str] ← dict()
+        scope.__setitem__("scope", "x86_64 software emulator; physical PowerVR NOT_VERIFIED")
+        scope.__setitem__("apk_sha256", hashlib.sha256(Path(apk).read_bytes()).hexdigest())
+        root.joinpath("scope.json").write_text(json.dumps(scope))
+
+main()

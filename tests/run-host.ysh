@@ -1,0 +1,26 @@
+#!/usr/bin/env grease
+set -eu -o pipefail
+test "$#" = 3 || { echo 'expected NEW_OUTPUT RAYLIB_SOURCE LUA_ARCHIVE' >&2; exit 2; }
+var output = "$1"
+var ray = "$2"
+var archive = "$3"
+var script = $(/usr/bin/readlink -f "$0")
+var tests = $(/usr/bin/dirname "$script")
+var ndk = ENV.ANDROID_NDK_ROOT
+var cc = "$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/clang-18"
+var ld = "$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/ld.lld"
+test $(/usr/bin/sha256sum "$cc" | /usr/bin/awk '{print $1}') = a871130d810536f7bb924c8aeaff57c66de27bed9b13d0ccafba25fdcc8bd02d
+test $(/usr/bin/sha256sum "$ld" | /usr/bin/awk '{print $1}') = c4a7473d3b8a99a32335616838af2aa85c6333091abeab423be2a905ff5f288c
+test $(/usr/bin/git --no-replace-objects -C "$ray" rev-parse HEAD) = dbc56a87da87d973a9c5baa4e7438a9d20121d28
+test ! -e "$output"
+/usr/bin/mkdir -m 700 "$output"
+test $(/usr/bin/sha256sum "$archive" | /usr/bin/awk '{print $1}') = 4f18ddae154e793e46eeab727c59ef1c0c0c2b744e7b94219710d76f530629ae
+/usr/bin/tar --no-same-owner -xzf "$archive" -C "$output"
+printf 'case\texpected\tresult\n' > "$output/results.tsv"
+for unit in diagnostic_state geometry; do
+  "$cc" --target=x86_64-linux-gnu --sysroot=/ -rtlib=libgcc -unwindlib=libgcc "--ld-path=$ld" -std=c99 -O2 -ffunction-sections -fdata-sections -Wl,--gc-sections "-I$ray/src" "-I$output/lua-5.4.8/src" "$tests/$unit.c" -lm -o "$output/$unit"
+  "$output/$unit"
+  printf '%s\tindependent assertions\tPASS\n' "$unit" >> "$output/results.tsv"
+done
+/usr/bin/sha256sum "$cc" "$ld" "$tests/diagnostic_state.c" "$tests/geometry.c" "$tests/../app/src/main/cpp/crystal.c" > "$output/materials.sha256"
+/usr/bin/cat "$output/results.tsv"

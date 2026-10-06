@@ -10,6 +10,9 @@ var script = $(/usr/bin/readlink -f "$0")
 var scripts = $(/usr/bin/dirname "$script")
 var github = $(/usr/bin/dirname "$scripts")
 var root = $(/usr/bin/dirname "$github")
+var source_commit = $(/usr/bin/env -i PATH=/usr/bin:/bin GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null /usr/bin/git --no-replace-objects -C "$root" rev-parse HEAD)
+# The producer separately admits a clean checkout. This value identifies the
+# compiled source; it does not identify APK bytes or establish device acceptance.
 var ndk = ENV.ANDROID_NDK_ROOT
 var cc = "$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/clang-18"
 var linker = "$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/ld.lld"
@@ -83,7 +86,7 @@ printf 'lua-compile\tndk\t%s\tPASS\n' "$compiler_hash" >> "$work/stages.tsv"
 printf 'material\tabi\tpre_strip_bytes\tpost_strip_bytes\tsha256\n' > "$work/sizes.tsv"
 proc variant(material, kind, title) {
   /usr/bin/mkdir -p "$work/native/$material"
-  "$cc" @common @architecture @diagnostic -DPLATFORM_ANDROID "-DCRYSTAL_KIND=$kind" "-DCRYSTAL_TITLE=\"$title\"" "-I$raylib/src" "-I$lua" -c "$root/app/src/main/cpp/crystal.c" -o "$work/$material.o"
+  "$cc" @common @architecture @diagnostic -DPLATFORM_ANDROID "-DCRYSTAL_KIND=$kind" "-DCRYSTAL_TITLE=\"$title\"" "-DCRYSTAL_SOURCE_COMMIT=\"$source_commit\"" "-DCRYSTAL_PACKAGE_ID=\"org.isomorphisms.crystal.$material\"" "-I$raylib/src" "-I$lua" -c "$root/app/src/main/cpp/crystal.c" -o "$work/$material.o"
   printf '%s-compile\tndk\t%s\tPASS\n' "$material" "$compiler_hash" >> "$work/stages.tsv"
   var native = "$work/native/$material/libcrystal.so"
   var lua_objects = glob("$work/lua/*.o")
@@ -100,7 +103,6 @@ proc variant(material, kind, title) {
 variant halite 0 'Crystal Halite'
 variant quartz 1 'Crystal Quartz'
 variant bismuth 2 'Crystal Bismuth'
-var source_commit = $(/usr/bin/env -i PATH=/usr/bin:/bin GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null /usr/bin/git --no-replace-objects -C "$root" rev-parse HEAD)
 var source_blob = $(/usr/bin/sha256sum "$root/app/src/main/cpp/crystal.c" | /usr/bin/awk '{print $1}')
 printf 'schema\tcrystal-native-candidate-v1\nsource_commit\t%s\nsource_blob_sha256\t%s\nraylib_commit\t%s\nlua_archive_sha256\t%s\nndk_revision\t27.2.12479018\nabi\t%s\nproducer_authentication\tNOT_VERIFIED\n' "$source_commit" "$source_blob" "$raylib_commit" "$lua_digest" "$abi" > "$work/materials.tsv"
 # A complete native candidate becomes visible only after all variants pass.
