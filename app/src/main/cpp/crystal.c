@@ -24,6 +24,7 @@
 #define MAX_NET_FACETS 192
 #define MAX_FACET_NODES 4
 #define MAX_TRIANGLES 512
+#define MAX_NET_EDGES (MAX_NET_FACETS * MAX_FACET_NODES)
 
 typedef struct {
     Vector3 position;
@@ -46,6 +47,11 @@ typedef struct {
     Vector3 b;
     Vector3 c;
 } CrystalTriangle;
+
+typedef struct {
+    int a;
+    int b;
+} CrystalEdge;
 
 static Color gTint = { 220, 232, 245, 255 };
 static float gAutoSpin = 0.0f;
@@ -237,6 +243,46 @@ static Mesh BuildRaylibMesh(const CrystalNet *net) {
     return mesh;
 }
 
+static int CollectNetEdges(const CrystalNet *net, CrystalEdge out[MAX_NET_EDGES]) {
+    int edgeCount = 0;
+
+    for (int f = 0; f < net->facetCount; ++f) {
+        const CrystalFacet *facet = &net->facets[f];
+        for (int i = 0; i < facet->count; ++i) {
+            int a = facet->node[i];
+            int b = facet->node[(i + 1) % facet->count];
+            if (a > b) {
+                int tmp = a;
+                a = b;
+                b = tmp;
+            }
+
+            bool duplicate = false;
+            for (int e = 0; e < edgeCount; ++e) {
+                if (out[e].a == a && out[e].b == b) {
+                    duplicate = true;
+                    break;
+                }
+            }
+
+            if (!duplicate && edgeCount < MAX_NET_EDGES) {
+                out[edgeCount++] = (CrystalEdge){ a, b };
+            }
+        }
+    }
+
+    return edgeCount;
+}
+
+static void DrawNetEdges(const CrystalNet *net, const CrystalEdge *edges, int edgeCount,
+                         Matrix transform, Color color) {
+    for (int e = 0; e < edgeCount; ++e) {
+        Vector3 a = Vector3Transform(net->nodes[edges[e].a].position, transform);
+        Vector3 b = Vector3Transform(net->nodes[edges[e].b].position, transform);
+        DrawLine3D(a, b, color);
+    }
+}
+
 static int LuaSetColor(lua_State *L) {
     double r = luaL_checknumber(L, 1);
     double g = luaL_checknumber(L, 2);
@@ -312,6 +358,8 @@ int main(void) {
     CrystalNet net = BuildMaterialNet();
     Mesh mesh = BuildRaylibMesh(&net);
     Model model = LoadModelFromMesh(mesh);
+    CrystalEdge edges[MAX_NET_EDGES];
+    int edgeCount = CollectNetEdges(&net, edges);
 
     Camera3D camera = {0};
     camera.position = (Vector3){ 4.3f, 3.2f, 5.4f };
@@ -322,10 +370,14 @@ int main(void) {
 
     float pitch = -0.18f;
     float yaw = 0.55f;
-    bool showWire = true;
+    int renderMode = 2;  // 0 = solid, 1 = net edges, 2 = both
     bool pointerWasDown = false;
     bool pointerConsumed = false;
     Vector2 previousPointer = {0};
+    bool pinching = false;
+    float previousPinchDistance = 0.0f;
+    Vector3 cameraDirection = Vector3Normalize(Vector3Subtract(camera.position, camera.target));
+    float cameraDistance = Vector3Distance(camera.position, camera.target);
 
     while (!WindowShouldClose()) {
         int sw = GetScreenWidth();
@@ -333,50 +385,85 @@ int main(void) {
         Rectangle resetRect = { 20.0f, (float)sh - 92.0f, 150.0f, 58.0f };
         Rectangle wireRect = { (float)sw - 170.0f, (float)sh - 92.0f, 150.0f, 58.0f };
 
+        int touchCount = GetTouchPointCount();
         bool pointerDown = false;
         Vector2 pointer = {0};
-        if (GetTouchPointCount() > 0) {
-            pointerDown = true;
-            pointer = GetTouchPosition(0);
-        } else if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
-            pointerDown = true;
-            pointer = GetMousePosition();
-        }
 
-        if (pointerDown && !pointerWasDown) {
-            pointerConsumed = false;
-            if (CheckCollisionPointRec(pointer, resetRect)) {
-                pitch = -0.18f;
-                yaw = 0.55f;
-                pointerConsumed = true;
-            } else if (CheckCollisionPointRec(pointer, wireRect)) {
-                showWire = !showWire;
-                pointerConsumed = true;
+        if (touchCount >= 2) {
+            Vector2 firstTouch = GetTouchPosition(0);
+            Vector2 secondTouch = GetTouchPosition(1);
+            float pinchDistance = Vector2Distance(firstTouch, secondTouch);
+
+            if (pinching && previousPinchDistance > 1.0f && pinchDistance > 1.0f) {
+                float ratio = pinchDistance / previousPinchDistance;
+                cameraDistance = Clamp(cameraDistance / ratio, 2.6f, 10.0f);
             }
-            previousPointer = pointer;
-        } else if (pointerDown && pointerWasDown && !pointerConsumed) {
-            Vector2 delta = Vector2Subtract(pointer, previousPointer);
-            yaw += delta.x * 0.010f;
-            pitch += delta.y * 0.010f;
-            pitch = Clamp(pitch, -1.45f, 1.45f);
-            previousPointer = pointer;
-        }
 
-        pointerWasDown = pointerDown;
-        if (!pointerDown) pointerConsumed = false;
+            previousPinchDistance = pinchDistance;
+            pinching = true;
+            pointerWasDown = false;
+            pointerConsumed = false;
+        } else {
+            if (pinching) {
+                pinching = false;
+                previousPinchDistance = 0.0f;
+                pointerWasDown = false;
+                pointerConsumed = false;
+            }
+
+            if (touchCount == 1) {
+                pointerDown = true;
+                pointer = GetTouchPosition(0);
+            } else if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
+                pointerDown = true;
+                pointer = GetMousePosition();
+            }
+
+            if (pointerDown && !pointerWasDown) {
+                pointerConsumed = false;
+                if (CheckCollisionPointRec(pointer, resetRect)) {
+                    pitch = -0.18f;
+                    yaw = 0.55f;
+                    cameraDistance = Vector3Distance((Vector3){ 4.3f, 3.2f, 5.4f }, camera.target);
+                    pointerConsumed = true;
+                } else if (CheckCollisionPointRec(pointer, wireRect)) {
+                    renderMode = (renderMode + 1) % 3;
+                    pointerConsumed = true;
+                }
+                previousPointer = pointer;
+            } else if (pointerDown && pointerWasDown && !pointerConsumed) {
+                Vector2 delta = Vector2Subtract(pointer, previousPointer);
+                yaw += delta.x * 0.010f;
+                pitch += delta.y * 0.010f;
+                pitch = Clamp(pitch, -1.45f, 1.45f);
+                previousPointer = pointer;
+            }
+
+            pointerWasDown = pointerDown;
+            if (!pointerDown) pointerConsumed = false;
+        }
 
         yaw += gAutoSpin * GetFrameTime();
         model.transform = MatrixMultiply(MatrixRotateX(pitch), MatrixRotateY(yaw));
+        camera.position = Vector3Add(camera.target, Vector3Scale(cameraDirection, cameraDistance));
 
         BeginDrawing();
         ClearBackground((Color){ 18, 20, 25, 255 });
 
         BeginMode3D(camera);
         DrawGrid(12, 0.5f);
-        rlDisableBackfaceCulling();
-        DrawModel(model, Vector3Zero(), 1.0f, gTint);
-        if (showWire) DrawModelWires(model, Vector3Zero(), 1.002f, (Color){ 20, 25, 32, 255 });
-        rlEnableBackfaceCulling();
+        if (renderMode != 1) {
+            rlDisableBackfaceCulling();
+            DrawModel(model, Vector3Zero(), 1.0f, gTint);
+            rlEnableBackfaceCulling();
+        }
+        if (renderMode != 0) {
+            if (renderMode == 2) rlDisableDepthTest();
+            rlSetLineWidth(2.0f);
+            DrawNetEdges(&net, edges, edgeCount, model.transform, (Color){ 245, 248, 252, 255 });
+            rlSetLineWidth(1.0f);
+            if (renderMode == 2) rlEnableDepthTest();
+        }
         EndMode3D();
 
         DrawRectangle(0, 0, sw, 82, Fade(BLACK, 0.55f));
@@ -389,9 +476,10 @@ int main(void) {
 
         DrawRectangleRec(wireRect, Fade(DARKGRAY, 0.92f));
         DrawRectangleLinesEx(wireRect, 2.0f, GRAY);
-        DrawText(showWire ? "WIRES ON" : "WIRES OFF", (int)wireRect.x + 18, (int)wireRect.y + 18, 18, RAYWHITE);
+        const char *viewLabel = (renderMode == 0) ? "SOLID" : (renderMode == 1) ? "NET" : "BOTH";
+        DrawText(viewLabel, (int)wireRect.x + 42, (int)wireRect.y + 18, 18, RAYWHITE);
 
-        DrawText("drag anywhere on the crystal to rotate", 20, sh - 126, 17, LIGHTGRAY);
+        DrawText("drag: rotate   pinch: zoom", 20, sh - 126, 17, LIGHTGRAY);
         EndDrawing();
     }
 
