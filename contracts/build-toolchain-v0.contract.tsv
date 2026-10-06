@@ -1,0 +1,7 @@
+# Every maintained build selects ICK or Android NDK and records ICK maturity.
+nonempty	BUILD-TOOLCHAIN-MANIFEST	ci/build-toolchain.tsv
+tsv_header	BUILD-TOOLCHAIN-HEADER	ci/build-toolchain.tsv	build_id,target,toolchain,ick_revision,ick_status,ick_evidence
+build_toolchains_allowed	BUILD-TOOLCHAIN-CHOICE	ci/build-toolchain.tsv
+build_toolchains_revision	BUILD-TOOLCHAIN-ICK-REVISION	ci/build-toolchain.tsv
+build_toolchains_evidence	BUILD-TOOLCHAIN-ICK-EVIDENCE	ci/build-toolchain.tsv
+build_toolchains_ndk_gap	BUILD-TOOLCHAIN-ICK-GAP	ci/build-toolchain.tsv
