@@ -20,6 +20,10 @@
 #define CRYSTAL_TITLE "Crystal"
 #endif
 
+#ifndef CRYSTAL_EMULATOR_TEST
+#define CRYSTAL_EMULATOR_TEST 0
+#endif
+
 #define MAX_NET_NODES 160
 #define MAX_NET_FACETS 192
 #define MAX_FACET_NODES 4
@@ -355,11 +359,18 @@ int main(void) {
 
     ConfigureWithLua();
 
+#if CRYSTAL_EMULATOR_TEST
+    gAutoSpin = 0.0f;
+    TraceLog(LOG_INFO, "Crystal: emulator diagnostics enabled");
+#endif
+
     CrystalNet net = BuildMaterialNet();
     Mesh mesh = BuildRaylibMesh(&net);
     Model model = LoadModelFromMesh(mesh);
     CrystalEdge edges[MAX_NET_EDGES];
     int edgeCount = CollectNetEdges(&net, edges);
+    TraceLog(LOG_INFO, "Crystal: kind=%d nodes=%d facets=%d edges=%d",
+             CRYSTAL_KIND, net.nodeCount, net.facetCount, edgeCount);
 
     Camera3D camera = {0};
     camera.position = (Vector3){ 4.3f, 3.2f, 5.4f };
@@ -480,6 +491,19 @@ int main(void) {
         DrawText(viewLabel, (int)wireRect.x + 42, (int)wireRect.y + 18, 18, RAYWHITE);
 
         DrawText("drag: rotate   pinch: zoom", 20, sh - 126, 17, LIGHTGRAY);
+
+#if CRYSTAL_EMULATOR_TEST
+        DrawRectangle(0, 88, sw, 94, Fade(BLACK, 0.60f));
+        DrawText(TextFormat("CI diag: kind=%d nodes=%d facets=%d edges=%d",
+                            CRYSTAL_KIND, net.nodeCount, net.facetCount, edgeCount),
+                 20, 96, 16, LIME);
+        DrawText(TextFormat("mode=%s yaw=%.3f pitch=%.3f dist=%.3f",
+                            viewLabel, yaw, pitch, cameraDistance),
+                 20, 122, 16, LIME);
+        DrawText(TextFormat("screen=%dx%d projection=perspective", sw, sh),
+                 20, 148, 16, LIME);
+#endif
+
         EndDrawing();
     }
 
