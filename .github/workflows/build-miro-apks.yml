@@ -183,7 +183,19 @@ jobs:
           SDKMANAGER="$(find "$ANDROID_SDK_ROOT/cmdline-tools" -type f -name sdkmanager | sort | tail -n 1)"
           test -x "$SDKMANAGER"
           yes | "$SDKMANAGER" --licenses >/dev/null || true
-          "$SDKMANAGER"             "platform-tools"             "emulator"             "platforms;android-34"             "build-tools;34.0.0"             "ndk;26.3.11579264"             "system-images;android-34;default;x86_64"
+          "$SDKMANAGER" \
+            "platform-tools" \
+            "emulator" \
+            "platforms;android-34" \
+            "build-tools;34.0.0" \
+            "ndk;26.3.11579264" \
+            "system-images;android-34;default;x86_64"
+
+      - name: Expose Android platform tools
+        shell: bash
+        run: |
+          test -x "$ANDROID_SDK_ROOT/platform-tools/adb"
+          echo "$ANDROID_SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
 
       - name: Build stripped x86_64 diagnostic libraries
         shell: bash
@@ -263,12 +275,63 @@ jobs:
           sudo chmod 666 /dev/kvm
           AVDMANAGER="$(find "$ANDROID_SDK_ROOT/cmdline-tools" -type f -name avdmanager | sort | tail -n 1)"
           test -x "$AVDMANAGER"
-          echo no | "$AVDMANAGER" create avd --name crystal-ci --package "system-images;android-34;default;x86_64" --force
+          echo no | "$AVDMANAGER" create avd \
+            --name crystal-ci \
+            --package "system-images;android-34;default;x86_64" \
+            --force
+
           mkdir -p emulator-evidence
-          nohup "$ANDROID_SDK_ROOT/emulator/emulator" -avd crystal-ci -no-window -no-audio -no-boot-anim -no-snapshot -wipe-data -gpu swiftshader_indirect > emulator-evidence/emulator-stdout.txt 2>&1 &
-          echo $! > emulator-evidence/emulator.pid
-          adb wait-for-device
-          timeout 300 bash -c 'until [[ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d "\r")" == "1" ]]; do sleep 2; done'
+          nohup "$ANDROID_SDK_ROOT/emulator/emulator" \
+            -avd crystal-ci \
+            -accel on \
+            -no-window \
+            -no-audio \
+            -no-boot-anim \
+            -no-snapshot \
+            -wipe-data \
+            -gpu swiftshader_indirect \
+            > emulator-evidence/emulator-stdout.txt 2>&1 &
+          emulator_pid=$!
+          echo "$emulator_pid" > emulator-evidence/emulator.pid
+
+          device_ready=0
+          for _ in $(seq 1 60); do
+            if ! kill -0 "$emulator_pid" 2>/dev/null; then
+              echo "Android emulator exited before ADB became ready" >&2
+              cat emulator-evidence/emulator-stdout.txt >&2
+              exit 1
+            fi
+            if adb get-state 2>/dev/null | grep -qx device; then
+              device_ready=1
+              break
+            fi
+            sleep 2
+          done
+          if [[ "$device_ready" != 1 ]]; then
+            echo "Android emulator did not expose an ADB device" >&2
+            cat emulator-evidence/emulator-stdout.txt >&2
+            exit 1
+          fi
+
+          boot_ready=0
+          for _ in $(seq 1 120); do
+            if ! kill -0 "$emulator_pid" 2>/dev/null; then
+              echo "Android emulator exited during boot" >&2
+              cat emulator-evidence/emulator-stdout.txt >&2
+              exit 1
+            fi
+            if [[ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == 1 ]]; then
+              boot_ready=1
+              break
+            fi
+            sleep 2
+          done
+          if [[ "$boot_ready" != 1 ]]; then
+            echo "Android emulator did not finish booting" >&2
+            cat emulator-evidence/emulator-stdout.txt >&2
+            exit 1
+          fi
+
           adb shell wm size 576x1152
           adb shell wm density 240
           adb shell settings put system accelerometer_rotation 0
