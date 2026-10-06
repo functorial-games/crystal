@@ -1,2 +1,3 @@
 build_id	target	toolchain	ick_revision	ick_status	ick_evidence
 crystal-native-armv7	armeabi-v7a	ndk	79eccb8ff232e05bdbb9e345fc224f251636b43f	gap:C/raylib/Lua NativeActivity ARMv7 compilation and Android platform linking are not qualified through ICK	issue:functorial-games/crystal#8
+crystal-emulator-x86_64	x86_64-android-emulator	ndk	79eccb8ff232e05bdbb9e345fc224f251636b43f	gap:C/raylib/Lua NativeActivity x86_64 Android emulator compilation and platform linking are not qualified through ICK	issue:functorial-games/crystal#8
