@@ -89,7 +89,7 @@ jobs:
             package=$2
             export ANDROID_PACKAGE_ID="$package"
             bash .android-ndk/apk/build-nativeactivity-apk.sh \
-              "android/$flavor-manifest.xml" \
+              "android/quartz-manifest.xml" \
               "build/native/$flavor/armeabi-v7a/libcrystal.so" \
               armeabi-v7a \
               "dist/crystal-$flavor-miro-armeabi-v7a.apk"
