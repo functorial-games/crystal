@@ -1,0 +1,40 @@
+#!/usr/bin/env grease
+set -eu -o pipefail
+test "$#" = 4 || { echo 'expected NATIVE_BUILD OUTPUT_DIRECTORY VERSION_CODE PACKAGER_ROOT' >&2; exit 2; }
+var build = "$1"
+var output = "$2"
+var version = "$3"
+var packager = "$4"
+var GREASE = ENV.GREASE_BIN
+var script = $(/usr/bin/readlink -f "$0")
+var scripts = $(/usr/bin/dirname "$script")
+var github = $(/usr/bin/dirname "$scripts")
+var root = $(/usr/bin/dirname "$github")
+test ! -e "$output" || { echo 'fresh packaging attempt required' >&2; exit 1; }
+/usr/bin/mkdir -p "$output"
+setvar output = $(/usr/bin/readlink -f "$output")
+var work = $(/usr/bin/mktemp -d "$output/.package.XXXXXXXX")
+trap --add EXIT { /usr/bin/rm -r "$work" }
+setglobal ENV.ANDROID_MIN_SDK = '21'
+setglobal ENV.ANDROID_TARGET_SDK = '34'
+setglobal ENV.ANDROID_VERSION_CODE = version
+setglobal ENV.ANDROID_VERSION_NAME = "0.3-candidate-$version"
+setglobal ENV.ANDROID_PACKAGE_ID = ''
+printf 'material\tapk_bytes\tsha256\n' > "$work/packages.tsv"
+for material in halite quartz bismuth; do
+  setglobal ENV.ANDROID_PACKAGE_ID = "org.isomorphisms.crystal.$material"
+  # Each material owns its actual Android display name and metadata.
+  /usr/bin/sed "s/android:label=\"Crystal\"/android:label=\"Crystal $material\"/" "$root/android/quartz-manifest.xml" > "$work/$material.xml"
+  var apk = "$work/crystal-$material-miro-armeabi-v7a.apk"
+  "$GREASE" "$packager/apk/build-nativeactivity-apk.ysh" "$work/$material.xml" "$build/native/$material/libcrystal.so" armeabi-v7a "$apk"
+  var bytes = $(/usr/bin/stat -c %s "$apk")
+  var digest = $(/usr/bin/sha256sum "$apk" | /usr/bin/awk '{print $1}')
+  printf '%s\t%s\t%s\n' "$material" "$bytes" "$digest" >> "$work/packages.tsv"
+done
+# Only candidate bytes: no accepted-producer receipt exists in this program.
+printf 'schema\tcrystal-package-candidate-v1\nproducer\tNOT_VERIFIED\ninstall\tNOT_RUN\nlaunch\tNOT_RUN\nreplacement\tNOT_RUN\nvisual\tNOT_RUN\nphysical\tNOT_RUN\noriginal_key_recovery\tUNKNOWN\n' > "$work/acceptance.tsv"
+var apks = glob("$work/*.apk")
+var receipts = glob("$work/*.receipt.tsv")
+/usr/bin/mv @apks @receipts "$work/packages.tsv" "$work/acceptance.tsv" "$output/"
+/usr/bin/cp "$build/sizes.tsv" "$build/stages.tsv" "$build/materials.tsv" "$output/"
+echo 'Crystal direct package candidate: PASS; authenticated delivery is NOT_VERIFIED'

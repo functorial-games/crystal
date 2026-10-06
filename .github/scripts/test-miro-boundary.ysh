@@ -1,0 +1,30 @@
+#!/usr/bin/env grease
+set -eu -o pipefail
+var GREASE = ENV.GREASE_BIN
+var script = $(/usr/bin/readlink -f "$0")
+var scripts = $(/usr/bin/dirname "$script")
+var materials = ENV.CRYSTAL_MATERIALS
+var work = $(/usr/bin/mktemp -d /tmp/crystal-boundary.XXXXXXXX)
+trap --add EXIT { /usr/bin/rm -r "$work" }
+proc rejected(id, variable, value, needle) {
+  if /usr/bin/env "$variable=$value" "$GREASE" "$scripts/build-miro.ysh" armeabi-v7a "$work/$id" "$materials" > "$work/$id.log" 2>&1; then
+    echo "unexpected native acceptance: $id" >&2
+    exit 1
+  fi
+  /usr/bin/grep -Fq "$needle" "$work/$id.log"
+  test ! -e "$work/$id"
+  printf '%s\tDENIED_NO_OUTPUT\n' "$id"
+}
+rejected compiler-override CC /usr/bin/cc 'inherited build override: CC'
+rejected inherited-git GIT_DIR /wrong/repository 'inherited build override: GIT_DIR'
+/usr/bin/mkdir "$work/no-op"
+/usr/bin/cp /usr/bin/true "$work/no-op/aici"
+rejected no-op-build-policy AICI_HOST_VERIFIERS "$work/no-op" ''
+# Runtime failure in the fixed recipe cannot replace an earlier attempt.
+/usr/bin/mkdir "$work/occupied"
+printf 'original\n' > "$work/occupied/marker"
+if "$GREASE" "$scripts/build-miro.ysh" armeabi-v7a "$work/occupied" "$materials" > "$work/rerun.log" 2>&1; then
+  exit 1
+fi
+/usr/bin/grep -Fq 'original' "$work/occupied/marker"
+echo 'rerun-preserves-native-attempt: PASS'

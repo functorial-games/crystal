@@ -1,0 +1,37 @@
+{"kind":"assertion","status":"pass","code":"BUILD-TOOLCHAIN-MANIFEST","operation":"nonempty","detail":"ci/build-toolchain.tsv"}
+{"kind":"assertion","status":"pass","code":"BUILD-TOOLCHAIN-HEADER","operation":"tsv_header","detail":"ci/build-toolchain.tsv header=build_id,target,toolchain,ick_revision,ick_status,ick_evidence"}
+{"kind":"assertion","status":"pass","code":"BUILD-TOOLCHAIN-CHOICE","operation":"build_toolchains_allowed","detail":"ci/build-toolchain.tsv uses only ick or ndk"}
+{"kind":"assertion","status":"pass","code":"BUILD-TOOLCHAIN-ICK-REVISION","operation":"build_toolchains_revision","detail":"ci/build-toolchain.tsv pins exact ICK revisions"}
+{"kind":"assertion","status":"pass","code":"BUILD-TOOLCHAIN-ICK-EVIDENCE","operation":"build_toolchains_evidence","detail":"ci/build-toolchain.tsv records ICK qualification evidence"}
+{"kind":"ick-gap","build":"crystal-armv7-raylib-compile","target":"armeabi-v7a","ickRevision":"79eccb8ff232e05bdbb9e345fc224f251636b43f","gap":"C/raylib/Lua ARMv7 Android compilation and platform linking are not qualified through ICK","evidence":"issue:functorial-games/crystal#8"}
+{"kind":"ick-gap","build":"crystal-armv7-lua-compile","target":"armeabi-v7a","ickRevision":"79eccb8ff232e05bdbb9e345fc224f251636b43f","gap":"C/raylib/Lua ARMv7 Android compilation and platform linking are not qualified through ICK","evidence":"issue:functorial-games/crystal#8"}
+{"kind":"ick-gap","build":"crystal-armv7-halite-compile","target":"armeabi-v7a","ickRevision":"79eccb8ff232e05bdbb9e345fc224f251636b43f","gap":"C/raylib/Lua ARMv7 Android compilation and platform linking are not qualified through ICK","evidence":"issue:functorial-games/crystal#8"}
+{"kind":"ick-gap","build":"crystal-armv7-halite-link","target":"armeabi-v7a","ickRevision":"79eccb8ff232e05bdbb9e345fc224f251636b43f","gap":"C/raylib/Lua ARMv7 Android compilation and platform linking are not qualified through ICK","evidence":"issue:functorial-games/crystal#8"}
+{"kind":"ick-gap","build":"crystal-armv7-quartz-compile","target":"armeabi-v7a","ickRevision":"79eccb8ff232e05bdbb9e345fc224f251636b43f","gap":"C/raylib/Lua ARMv7 Android compilation and platform linking are not qualified through ICK","evidence":"issue:functorial-games/crystal#8"}
+{"kind":"ick-gap","build":"crystal-armv7-quartz-link","target":"armeabi-v7a","ickRevision":"79eccb8ff232e05bdbb9e345fc224f251636b43f","gap":"C/raylib/Lua ARMv7 Android compilation and platform linking are not qualified through ICK","evidence":"issue:functorial-games/crystal#8"}
+{"kind":"ick-gap","build":"crystal-armv7-bismuth-compile","target":"armeabi-v7a","ickRevision":"79eccb8ff232e05bdbb9e345fc224f251636b43f","gap":"C/raylib/Lua ARMv7 Android compilation and platform linking are not qualified through ICK","evidence":"issue:functorial-games/crystal#8"}
+{"kind":"ick-gap","build":"crystal-armv7-bismuth-link","target":"armeabi-v7a","ickRevision":"79eccb8ff232e05bdbb9e345fc224f251636b43f","gap":"C/raylib/Lua ARMv7 Android compilation and platform linking are not qualified through ICK","evidence":"issue:functorial-games/crystal#8"}
+{"kind":"ick-gap","build":"crystal-emulator-x86_64-raylib-compile","target":"x86_64-android-emulator","ickRevision":"79eccb8ff232e05bdbb9e345fc224f251636b43f","gap":"C/raylib/Lua x86_64 Android compilation and platform linking are not qualified through ICK","evidence":"issue:functorial-games/crystal#8"}
+{"kind":"ick-gap","build":"crystal-emulator-x86_64-lua-compile","target":"x86_64-android-emulator","ickRevision":"79eccb8ff232e05bdbb9e345fc224f251636b43f","gap":"C/raylib/Lua x86_64 Android compilation and platform linking are not qualified through ICK","evidence":"issue:functorial-games/crystal#8"}
+{"kind":"ick-gap","build":"crystal-emulator-x86_64-halite-compile","target":"x86_64-android-emulator","ickRevision":"79eccb8ff232e05bdbb9e345fc224f251636b43f","gap":"C/raylib/Lua x86_64 Android compilation and platform linking are not qualified through ICK","evidence":"issue:functorial-games/crystal#8"}
+{"kind":"ick-gap","build":"crystal-emulator-x86_64-halite-link","target":"x86_64-android-emulator","ickRevision":"79eccb8ff232e05bdbb9e345fc224f251636b43f","gap":"C/raylib/Lua x86_64 Android compilation and platform linking are not qualified through ICK","evidence":"issue:functorial-games/crystal#8"}
+{"kind":"ick-gap","build":"crystal-emulator-x86_64-quartz-compile","target":"x86_64-android-emulator","ickRevision":"79eccb8ff232e05bdbb9e345fc224f251636b43f","gap":"C/raylib/Lua x86_64 Android compilation and platform linking are not qualified through ICK","evidence":"issue:functorial-games/crystal#8"}
+{"kind":"ick-gap","build":"crystal-emulator-x86_64-quartz-link","target":"x86_64-android-emulator","ickRevision":"79eccb8ff232e05bdbb9e345fc224f251636b43f","gap":"C/raylib/Lua x86_64 Android compilation and platform linking are not qualified through ICK","evidence":"issue:functorial-games/crystal#8"}
+{"kind":"ick-gap","build":"crystal-emulator-x86_64-bismuth-compile","target":"x86_64-android-emulator","ickRevision":"79eccb8ff232e05bdbb9e345fc224f251636b43f","gap":"C/raylib/Lua x86_64 Android compilation and platform linking are not qualified through ICK","evidence":"issue:functorial-games/crystal#8"}
+{"kind":"ick-gap","build":"crystal-emulator-x86_64-bismuth-link","target":"x86_64-android-emulator","ickRevision":"79eccb8ff232e05bdbb9e345fc224f251636b43f","gap":"C/raylib/Lua x86_64 Android compilation and platform linking are not qualified through ICK","evidence":"issue:functorial-games/crystal#8"}
+{"kind":"assertion","status":"pass","code":"BUILD-TOOLCHAIN-ICK-GAP","operation":"build_toolchains_ndk_gap","detail":"ci/build-toolchain.tsv explains every NDK fallback"}
+{"kind":"summary","status":"pass","assertions":6,"failures":0}
+/workspace/scratch/af185923d929/crystal-build-E/.native-build.P2fuXfMD/lua-5.4.8/src/loslib.c:174:3: warning: 'tmpnam' is deprecated: tmpnam is unsafe, use mkstemp or tmpfile instead [-Wdeprecated-declarations]
+  174 |   lua_tmpnam(buff, err);
+      |   ^
+/workspace/scratch/af185923d929/crystal-build-E/.native-build.P2fuXfMD/lua-5.4.8/src/loslib.c:124:33: note: expanded from macro 'lua_tmpnam'
+  124 | #define lua_tmpnam(b,e)         { e = (tmpnam(b) == NULL); }
+      |                                        ^
+/workspace/scratch/af185923d929/toolchains/android-ndk-r27c/toolchains/llvm/prebuilt/linux-x86_64/bin/../sysroot/usr/include/stdio.h:151:5: note: 'tmpnam' has been explicitly marked deprecated here
+  151 |     __warnattr("tmpnam is unsafe, use mkstemp or tmpfile instead");
+      |     ^
+/workspace/scratch/af185923d929/toolchains/android-ndk-r27c/toolchains/llvm/prebuilt/linux-x86_64/bin/../sysroot/usr/include/sys/cdefs.h:146:40: note: expanded from macro '__warnattr'
+  146 | #define __warnattr(msg) __attribute__((__deprecated__(msg)))
+      |                                        ^
+1 warning generated.
+Crystal C/Lua/raylib native candidate: PASS; producer promotion remains separate

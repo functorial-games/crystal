@@ -1,0 +1,4 @@
+material	abi	pre_strip_bytes	post_strip_bytes	sha256
+halite	armeabi-v7a	1268488	1056704	fe346d8451c83aacea5490c88c88ddb16e5b8b53b3c8470b45cab44279cc8162
+quartz	armeabi-v7a	1268888	1057104	8b34bc6c4ffc88f2baddc9b2ce296d0c75df83f652652da8a91be55ee5f1c5bf
+bismuth	armeabi-v7a	1269576	1057792	2cf42628c5d39a5e9289cfe0fd50f50ef3e76a830841d56a13ff89fc11664b18

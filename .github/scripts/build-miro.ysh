@@ -1,0 +1,109 @@
+#!/usr/bin/env grease
+set -eu -o pipefail
+# Authoring candidate: a compile/link recipe, never accepted-delivery authority.
+test "$#" = 3 || { echo 'expected ABI OUTPUT_DIRECTORY MATERIAL_DIRECTORY' >&2; exit 2; }
+var abi = "$1"
+var output = "$2"
+var materials = "$3"
+test ! -e "$output" || { echo 'use a new output directory for each attempt' >&2; exit 1; }
+var script = $(/usr/bin/readlink -f "$0")
+var scripts = $(/usr/bin/dirname "$script")
+var github = $(/usr/bin/dirname "$scripts")
+var root = $(/usr/bin/dirname "$github")
+var ndk = ENV.ANDROID_NDK_ROOT
+var cc = "$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/clang-18"
+var linker = "$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/ld.lld"
+var strip = "$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip"
+var target = ''
+var architecture = []
+var diagnostic = []
+case "$abi" in
+  armeabi-v7a)
+    setvar target = 'armv7a-linux-androideabi21'
+    setvar architecture = ['-marm', '-march=armv7-a', '-mfloat-abi=softfp', '-mfpu=vfpv3-d16']
+    ;;
+  x86_64)
+    setvar target = 'x86_64-linux-android21'
+    setvar architecture = ['-march=x86-64']
+    setvar diagnostic = ['-DCRYSTAL_EMULATOR_TEST=1']
+    ;;
+  *) echo 'unsupported Crystal target' >&2; exit 1 ;;
+esac
+for dangerous in CC CXX CPPFLAGS CFLAGS LDFLAGS LD_PRELOAD LD_LIBRARY_PATH CPATH LIBRARY_PATH GIT_DIR GIT_WORK_TREE GIT_CONFIG_COUNT GIT_CONFIG_SYSTEM GIT_CONFIG_GLOBAL; do
+  var injected = get(ENV, dangerous, '')
+  test -z "$injected" || { echo "inherited build override: $dangerous" >&2; exit 1; }
+done
+var compiler_hash = $(/usr/bin/sha256sum "$cc" | /usr/bin/awk '{print $1}')
+var linker_hash = $(/usr/bin/sha256sum "$linker" | /usr/bin/awk '{print $1}')
+var strip_hash = $(/usr/bin/sha256sum "$strip" | /usr/bin/awk '{print $1}')
+test "$compiler_hash" = a871130d810536f7bb924c8aeaff57c66de27bed9b13d0ccafba25fdcc8bd02d
+test "$linker_hash" = c4a7473d3b8a99a32335616838af2aa85c6333091abeab423be2a905ff5f288c
+test "$strip_hash" = 31a3cb87fbf7c040aa82e853458cc6dc6dd95526123fc33c88ee8116a0c91c32
+# Run the existing mandatory build-policy kernel before any build effects.
+# These exact candidate bytes were built with pinned NDK host Clang/LLD and
+# exercised against the kernel's good/bad contract suite; promotion is separate.
+var verifiers = ENV.AICI_HOST_VERIFIERS
+var policy = ENV.AICI_POLICY_ROOT
+var verifier_sha = $(/usr/bin/sha256sum "$verifiers/aici" | /usr/bin/awk '{print $1}')
+var contract_sha = $(/usr/bin/sha256sum "$policy/contracts/build-toolchain-v0.contract.tsv" | /usr/bin/awk '{print $1}')
+test "$verifier_sha" = afeb8280faeb853ddcc9ef4ee5b5a88e21aec894e312868c3f345017693aa3a3
+test "$contract_sha" = 79c738ce2d2c5d17260d76d4a8ba76cc7179e1fdfb2dba4a93815699f4f1e7dd
+"$verifiers/aici" verify "$policy/contracts/build-toolchain-v0.contract.tsv" "$root"
+var raylib = "$materials/raylib"
+var raylib_commit = $(/usr/bin/env -i PATH=/usr/bin:/bin GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null /usr/bin/git --no-replace-objects -C "$raylib" rev-parse HEAD)
+test "$raylib_commit" = dbc56a87da87d973a9c5baa4e7438a9d20121d28 || exit 1
+/usr/bin/env -i PATH=/usr/bin:/bin GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null /usr/bin/git --no-replace-objects -c core.fsmonitor=false -C "$raylib" diff --quiet --no-ext-diff --no-textconv HEAD -- src
+var extra_sources = $(/usr/bin/env -i PATH=/usr/bin:/bin GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null /usr/bin/git --no-replace-objects -c core.fsmonitor=false -C "$raylib" ls-files --others --exclude-standard -- src)
+test -z "$extra_sources" || { echo 'unadmitted raylib source files' >&2; exit 1; }
+var lua_digest = $(/usr/bin/sha256sum "$materials/lua-5.4.8.tar.gz" | /usr/bin/awk '{print $1}')
+test "$lua_digest" = 4f18ddae154e793e46eeab727c59ef1c0c0c2b744e7b94219710d76f530629ae || { echo 'Lua archive bytes changed' >&2; exit 1; }
+/usr/bin/mkdir -p "$output"
+setvar output = $(/usr/bin/readlink -f "$output")
+var work = $(/usr/bin/mktemp -d "$output/.native-build.XXXXXXXX")
+trap --add EXIT { /usr/bin/rm -r "$work" }
+trap --add INT { exit 130 }
+trap --add TERM { exit 143 }
+/usr/bin/tar --no-same-owner -xzf "$materials/lua-5.4.8.tar.gz" -C "$work"
+var lua = "$work/lua-5.4.8/src"
+var common = ["--target=$target", '-std=c99', '-O2', '-fPIC', '-ffunction-sections', '-fdata-sections']
+var ray_flags = ['-D_GNU_SOURCE', '-DPLATFORM_ANDROID', '-DGRAPHICS_API_OPENGL_ES2', '-Wno-missing-braces', '-fno-strict-aliasing', "-I$raylib/src", "-I$ndk/sources/android/native_app_glue"]
+/usr/bin/mkdir -p "$work/ray" "$work/lua" "$work/native"
+printf 'stage\ttoolchain\texecutable_sha256\tresult\n' > "$work/stages.tsv"
+for unit in rcore rshapes rtextures rtext rmodels; do
+  "$cc" @common @architecture @ray_flags -c "$raylib/src/$unit.c" -o "$work/ray/$unit.o"
+done
+"$cc" @common @architecture "-I$ndk/sources/android/native_app_glue" -c "$ndk/sources/android/native_app_glue/android_native_app_glue.c" -o "$work/ray/glue.o"
+printf 'raylib-compile\tndk\t%s\tPASS\n' "$compiler_hash" >> "$work/stages.tsv"
+for source in @[glob("$lua/*.c")]; do
+  var base = $(/usr/bin/basename "$source" .c)
+  case "$base" in lua|luac) continue ;; esac
+  "$cc" @common @architecture "-I$lua" -c "$source" -o "$work/lua/$base.o"
+done
+printf 'lua-compile\tndk\t%s\tPASS\n' "$compiler_hash" >> "$work/stages.tsv"
+printf 'material\tabi\tpre_strip_bytes\tpost_strip_bytes\tsha256\n' > "$work/sizes.tsv"
+proc variant(material, kind, title) {
+  /usr/bin/mkdir -p "$work/native/$material"
+  "$cc" @common @architecture @diagnostic -DPLATFORM_ANDROID "-DCRYSTAL_KIND=$kind" "-DCRYSTAL_TITLE=\"$title\"" "-I$raylib/src" "-I$lua" -c "$root/app/src/main/cpp/crystal.c" -o "$work/$material.o"
+  printf '%s-compile\tndk\t%s\tPASS\n' "$material" "$compiler_hash" >> "$work/stages.tsv"
+  var native = "$work/native/$material/libcrystal.so"
+  var lua_objects = glob("$work/lua/*.o")
+  var ray_objects = glob("$work/ray/*.o")
+  "$cc" "--target=$target" "--ld-path=$linker" @architecture -shared "$work/$material.o" @lua_objects @ray_objects -Wl,-soname,libcrystal.so -Wl,-u,ANativeActivity_onCreate -Wl,--no-undefined -Wl,--gc-sections -Wl,--wrap=fopen -landroid -llog -lEGL -lGLESv2 -lOpenSLES -ldl -lm -lc -latomic -o "$native"
+  printf '%s-link\tndk\t%s\tPASS\n' "$material" "$linker_hash" >> "$work/stages.tsv"
+  var before = $(/usr/bin/stat -c %s "$native")
+  "$strip" --strip-unneeded "$native"
+  var after = $(/usr/bin/stat -c %s "$native")
+  var digest = $(/usr/bin/sha256sum "$native" | /usr/bin/awk '{print $1}')
+  printf '%s\t%s\t%s\t%s\t%s\n' "$material" "$abi" "$before" "$after" "$digest" >> "$work/sizes.tsv"
+  printf '%s-strip\tndk\t%s\tPASS\n' "$material" "$strip_hash" >> "$work/stages.tsv"
+}
+variant halite 0 'Crystal Halite'
+variant quartz 1 'Crystal Quartz'
+variant bismuth 2 'Crystal Bismuth'
+var source_commit = $(/usr/bin/env -i PATH=/usr/bin:/bin GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null /usr/bin/git --no-replace-objects -C "$root" rev-parse HEAD)
+var source_blob = $(/usr/bin/sha256sum "$root/app/src/main/cpp/crystal.c" | /usr/bin/awk '{print $1}')
+printf 'schema\tcrystal-native-candidate-v1\nsource_commit\t%s\nsource_blob_sha256\t%s\nraylib_commit\t%s\nlua_archive_sha256\t%s\nndk_revision\t27.2.12479018\nabi\t%s\nproducer_authentication\tNOT_VERIFIED\n' "$source_commit" "$source_blob" "$raylib_commit" "$lua_digest" "$abi" > "$work/materials.tsv"
+# A complete native candidate becomes visible only after all variants pass.
+/usr/bin/mv "$work/native" "$output/native"
+/usr/bin/mv "$work/stages.tsv" "$work/sizes.tsv" "$work/materials.tsv" "$output/"
+echo 'Crystal C/Lua/raylib native candidate: PASS; producer promotion remains separate'

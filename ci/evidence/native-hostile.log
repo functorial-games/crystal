@@ -1,0 +1,4 @@
+compiler-override	DENIED_NO_OUTPUT
+inherited-git	DENIED_NO_OUTPUT
+no-op-build-policy	DENIED_NO_OUTPUT
+rerun-preserves-native-attempt: PASS
